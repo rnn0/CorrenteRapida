@@ -949,7 +949,7 @@ internal sealed class BarLogic
 
         // Parada e encaixada: nada se mexe, não precisa redesenhar.
         if (e <= 0f && g.Settled && st == g.LastStatus && flash <= 0f) return;
-        g.Settled = e <= 0f && level < 3 && flash <= 0f; // Lendária pulsa mesmo encaixada
+        g.Settled = e <= 0f && level < 3 && flash <= 0f && !g.Style.AlwaysAnimate; // Lendária e cristais com brilho se mexem sempre
         g.LastStatus = st;
 
         g.Style.Frame(e, now, level, flash, g.Buf);

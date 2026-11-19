@@ -30,6 +30,10 @@ internal sealed class GemStyle
     public int Gem2, RingSilver, RingGold, GemGlow, Shard, Progress;
     public int M1 = -1, M2 = -1;   // motivos do nível Lendário
     public int Cracks, EnergyA, EnergyB; // rachaduras e energia no buraco da joia
+    public int[] Shine = Array.Empty<int>(); // brilho atravessando a joia (quadros)
+    public int Glint = -1;                   // cintilação nas pontas
+    public float[] TipX = Array.Empty<float>(), TipY = Array.Empty<float>(); // pontas da joia (coords da textura)
+    public bool AlwaysAnimate => Shine.Length > 0;
 
     public const int Bruta = 0, Lapidada = 1, Lustrosa = 2, Lendaria = 3;
 
@@ -64,6 +68,26 @@ internal sealed class GemStyle
             o.Add(new Spr(Cracks, 0, 0, 1, 1, 0, e * (0.7f + 0.3f * MathF.Sin(t * 4.1f + 1f))));
         }
         o.Add(new Spr(level >= Lapidada ? Gem2 : Gem, gx, gy, s, s, 0, 1));
+        if (Shine.Length > 0)
+        {
+            // Brilho reluzente em loop: uma faixa de luz cruza o cristal e depois descansa.
+            float u = t / 2.6f; u -= MathF.Floor(u);
+            if (u < 0.35f)
+            {
+                int fi = Math.Min(Shine.Length - 1, (int)(u / 0.35f * Shine.Length));
+                o.Add(new Spr(Shine[fi], gx, gy, s, s, 0, 0.9f));
+            }
+            // Cintilação numa das pontas, trocando a cada ciclo.
+            int cyc = (int)MathF.Floor(t / 1.3f);
+            float v = t / 1.3f - cyc;
+            float tw = MathF.Sin(MathF.PI * Math.Min(1f, v / 0.5f));
+            if (v < 0.5f && Glint >= 0 && TipX.Length > 0)
+            {
+                int tipI = (int)(Hash(cyc * 31 + Kind) * TipX.Length) % TipX.Length;
+                float gsz = 0.30f * tw;
+                o.Add(new Spr(Glint, gx + TipX[tipI] * 0.5f * s, gy + TipY[tipI] * 0.5f * s, gsz, gsz, 0, tw));
+            }
+        }
         if (level >= Lendaria)   // luz interna pulsando, mesmo encaixada
             o.Add(new Spr(GemGlow, gx, gy, s * 1.1f, s * 1.1f, 0, 0.30f + 0.20f * MathF.Sin(t * 2.2f) + 0.2f * e));
         if (on) AuraFront(ea, t, level, o);
@@ -328,10 +352,14 @@ internal static class GemArt
                 break;
 
             case Gelo:
-                Base(g, 0x2F7FC0, 0x8FD0F8, 0x1A4F80, Flake, 0xBFE2FA, 0xFFFFFF, 0x4F86B4, 0x0F2A48, energy: 0xA8E6FF);
+                Base(g, 0x2F7FC0, 0x8FD0F8, 0x1A4F80, IceStar, 0x0E2A52, 0x5FA8E6, 0x05132A, 0x0F2A48, energy: 0xA8E6FF);
+                // Cristal de gelo escuro: facetas claras/escuras por ponta, no lugar do cristal genérico.
+                g.Tex[g.Gem] = StarTex(false);
+                g.Tex[g.Gem2] = StarTex(true);
+
                 g.Halo = g.Add(S, Halo(0xE6F8FF, 0x5FB8F0));
                 g.A1 = g.Add(S, Frost());
-                g.Particle = g.Add(P, Small(P, Flake, 0xCFE8FF, 0xFFFFFF, 0x7FB0D8));
+                g.Particle = g.Add(P, CrystalSmall(P, IceShard, 0x3A78B8, 0xE8F6FF, 0x0E2A52));
                 g.M1 = g.Add(S, Veil(4.2f));
                 g.M2 = g.Add(S, Veil(17.9f));
                 break;
@@ -376,14 +404,20 @@ internal static class GemArt
         g.Ball = g.Add(S, BallTex(ballDark, ballLight, ballRim));
         g.Hole = g.Add(S, HoleTex(shape, hole, ballLight));
         g.Shadow = g.Add(S, ShadowTex(shape));
-        g.Gem = g.Add(S, CrystalTex(shape, gemDark, gemLight, gemEdge, custom));
-        g.Gem2 = g.Add(S, CrystalTex(shape, gemDark, gemLight, gemEdge, custom, facets: 12f, polished: true));
+        Sd? fs = shape == (Sd)Skull ? SkullSilhouette : null;
+        g.Gem = g.Add(S, CrystalTex(shape, gemDark, gemLight, gemEdge, custom, facetShape: fs));
+        g.Gem2 = g.Add(S, CrystalTex(shape, gemDark, gemLight, gemEdge, custom, facets: 12f, polished: true, facetShape: fs));
         g.RingSilver = g.Add(S, Ring(false));
         g.RingGold = g.Add(S, Ring(true));
         g.GemGlow = g.Add(S, GlowTex(shape, gemLight));
         g.Shard = g.Add(P, CrystalSmall(P, ShardShape, gemDark, gemLight, gemEdge));
         g.Progress = g.Add(S, ProgressRing());
         g.Cracks = g.Add(S, CracksTex(shape, en, g.Kind * 97 + 13));
+        // Brilho em loop e cintilação nas pontas, para todas as joias.
+        g.Shine = new int[8];
+        for (int i = 0; i < 8; i++) g.Shine[i] = g.Add(S, ShineTex(shape, -1.1f + 2.2f * i / 7f));
+        g.Glint = g.Add(64, GlintTex());
+        FindTips(shape, out g.TipX, out g.TipY);
         g.EnergyA = g.Add(S, EnergyTex(shape, en, 3.7f + g.Kind));
         g.EnergyB = g.Add(S, EnergyTex(shape, en, 11.3f + g.Kind));
     }
@@ -441,6 +475,76 @@ internal static class GemArt
         return d;
     }
 
+    /// <summary>Estrela de gelo de 8 pontas: 4 longas (cima/baixo/lados) e 4 curtas nas diagonais.</summary>
+    static float IceStar(float x, float y)
+    {
+        var v = new float[32];
+        for (int k = 0; k < 8; k++)
+        {
+            float a = MathF.PI / 2f + k * MathF.PI / 4f;
+            float r = k % 2 == 0 ? 0.92f : 0.64f;
+            v[k * 4] = MathF.Cos(a) * r; v[k * 4 + 1] = MathF.Sin(a) * r;
+            float b = a + MathF.PI / 8f;
+            v[k * 4 + 2] = MathF.Cos(b) * 0.34f; v[k * 4 + 3] = MathF.Sin(b) * 0.34f;
+        }
+        return PolyN(x, y, v);
+    }
+
+    static float IceShard(float x, float y) => PolyN(x, y, new[] { 0f, 0.95f, 0.26f, 0.5f, 0.22f, -0.6f, 0f, -0.95f, -0.26f, -0.5f, -0.22f, 0.6f });
+
+    /// <summary>Cristal de gelo escuro: cada ponta dividida em face clara e face escura.</summary>
+    static float[] StarTex(bool polished) => Paint(S, (x, y) =>
+    {
+        float d = IceStar(x, y);
+        float a = Cover(d, S);
+        if (a <= 0f) return default;
+        float ang = MathF.Atan2(y, x);
+        float step = MathF.PI / 4f;
+        float k = MathF.Round((ang - MathF.PI / 2f) / step);
+        float pa = MathF.PI / 2f + k * step;                 // eixo da ponta mais próxima
+        float side = MathF.Sin(ang - pa);                     // de que lado do eixo estamos
+        // Normal da face: perpendicular ao eixo, inclinada para o lado; luz de cima à esquerda.
+        float nx = -MathF.Sin(pa) * MathF.Sign(side), ny = MathF.Cos(pa) * MathF.Sign(side);
+        float lit = Clamp01(0.5f + 0.5f * (nx * -0.6f + ny * 0.8f));
+        var dark = Rgb(0x0B2246); var mid = Rgb(0x2E68A8); var light = Rgb(0x9AD4FF);
+        var c = lit > 0.5f ? Mix(mid, light, (lit - 0.5f) * 2f) : Mix(dark, mid, lit * 2f);
+        // Aresta central de cada ponta (linha clara) e contorno escuro.
+        float r = Len(x, y);
+        float ridge = Clamp01(1f - MathF.Abs(side) * r / 0.010f) * Clamp01(r / 0.15f);
+        c = Mix(c, Rgb(0xD8F0FF), ridge * 0.8f);
+        float rim = Clamp01(1f - MathF.Abs(d + 0.012f) / 0.016f);
+        c = Mix(c, Rgb(0x05132A), rim * 0.9f);
+        // Miolo brilhante e estrela de reflexo.
+        c = Mix(c, Rgb(0xE6F6FF), Clamp01(1f - r / 0.10f) * 0.7f);
+        float sx = x + 0.12f, sy = y - 0.30f;
+        float star = Clamp01(1f - Len(sx, sy) / 0.04f) + Clamp01(1f - MathF.Abs(sx) / 0.01f) * Clamp01(1f - MathF.Abs(sy) / 0.12f)
+                   + Clamp01(1f - MathF.Abs(sy) / 0.01f) * Clamp01(1f - MathF.Abs(sx) / 0.12f);
+        c = Mix(c, (1f, 1f, 1f), Clamp01(star) * (polished ? 0.9f : 0.6f));
+        if (polished) c = Mix(c, Rgb(0xBFE6FF), Clamp01(lit - 0.6f) * 0.5f);   // faces claras mais vivas
+        return (c.r, c.g, c.b, a);
+    });
+
+    /// <summary>Faixa de luz diagonal recortada no formato da joia (um quadro do brilho em loop).</summary>
+    static float[] ShineTex(Sd shape, float pos) => Paint(S, (x, y) =>
+    {
+        float d = shape(x, y);
+        float a = Cover(d + 0.01f, S);
+        if (a <= 0f) return default;
+        float u = (x + y) * 0.7071f - pos;
+        float band = MathF.Exp(-u * u / 0.018f) + 0.5f * MathF.Exp(-(u + 0.20f) * (u + 0.20f) / 0.003f);
+        return (0.92f, 0.98f, 1f, a * Clamp01(band));
+    });
+
+    /// <summary>Cintilação de 4 pontas.</summary>
+    static float[] GlintTex() => Paint(64, (x, y) =>
+    {
+        float c1 = Clamp01(1f - MathF.Abs(x) / 0.05f) * Clamp01(1f - MathF.Abs(y));
+        float c2 = Clamp01(1f - MathF.Abs(y) / 0.05f) * Clamp01(1f - MathF.Abs(x));
+        float core = Clamp01(1f - Len(x, y) / 0.25f);
+        float a = Clamp01(MathF.Max(c1, c2) + core * core);
+        return (0.92f, 0.98f, 1f, a);
+    });
+
     static float Eye(float x, float y)
     {
         // Amêndoa (interseção de dois círculos) com pontas finas nos cantos.
@@ -474,6 +578,9 @@ internal static class GemArt
             -0.28f, -0.86f, -0.04f, -0.08f, -0.32f, -0.08f,
         });
     }
+
+    static float SkullSilhouette(float x, float y)
+        => SMin(Len(x / 1.06f, y - 0.12f) - 0.56f, Box(x, y + 0.36f, 0.29f, 0.17f) - 0.07f, 0.12f);
 
     static float Skull(float x, float y)
     {
@@ -544,70 +651,102 @@ internal static class GemArt
     /// iluminada de um jeito), mesa plana no meio, linhas de corte claras, brilho
     /// especular forte e um pouco de transparência.
     /// </summary>
-    static float[] CrystalTex(Sd shape, int dark, int light, int edge, GemColorFn? custom, float facets = 8f, bool polished = false) => Paint(S, (x, y) =>
+    /// <summary>
+    /// Joia de cristal lapidada em facetas: cada parte da forma se divide pela linha do meio
+    /// (onde as bordas se encontram) em faces planas claras e escuras, com arestas brilhantes,
+    /// contorno escuro e reflexo em estrela. Mesmo princípio da estrela de gelo.
+    /// </summary>
+    static float[] CrystalTex(Sd shape, int dark, int light, int edge, GemColorFn? custom, float facets = 8f, bool polished = false, Sd? facetShape = null) => Paint(S, (x, y) =>
     {
         float d = shape(x, y);
         float a = Cover(d, S);
         if (a <= 0f) return default;
 
-        const float h = 0.01f, bevel = 0.13f, slope = 0.85f;
-        float gx = shape(x + h, y) - shape(x - h, y);
-        float gy = shape(x, y + h) - shape(x, y - h);
-        float gl = MathF.Max(Len(gx, gy), 1e-5f);
-        float depth = -d;                       // distância até a borda
-        bool table = depth > bevel;
-
-        // Normal da faceta: direção do gradiente arredondada para 8 cortes.
-        float ang = MathF.Atan2(gy / gl, gx / gl);
-        float sector = ang / (MathF.Tau / facets);
-        float q = MathF.Round(sector) * (MathF.Tau / facets);
-        float nx, ny, nz;
-        if (table) { nx = 0f; ny = 0f; nz = 1f; }
-        else { nx = MathF.Cos(q) * MathF.Sin(slope); ny = MathF.Sin(q) * MathF.Sin(slope); nz = MathF.Cos(slope); }
-
-        // Luz de cima à esquerda, olhando de frente.
-        const float lx = -0.48f, ly = 0.58f, lz = 0.66f;
-        float diff = Clamp01(nx * lx + ny * ly + nz * lz);
-        float hx = lx, hy = ly, hz = lz + 1f, hl = Len3(hx, hy, hz);
-        float spec = MathF.Pow(Clamp01((nx * hx + ny * hy + nz * hz) / hl), 40f);
-
-        // Cor de dentro do cristal: mais clara e "acesa" no centro, mais saturada nas bordas.
-        var baseC = Mix(Rgb(dark), Rgb(light), Clamp01(0.35f + depth * 2.2f));
-        var cc = custom?.Invoke(x, y, d);
-        if (cc.HasValue) baseC = cc.Value;
-        float shade = table ? 0.95f + 0.25f * (Fbm(x * 5f + 2f, y * 5f) - 0.5f) : 0.45f + 0.85f * diff;
-        var c = (baseC.r * shade, baseC.g * shade, baseC.b * shade);
-
-        // Linhas de corte: entre facetas e na borda da mesa.
-        float frac = MathF.Abs(sector - MathF.Round(sector + 0.5f) + 0.5f); // 0 no meio, 0.5 na divisa
-        float seam = table ? 0f : Clamp01((frac - 0.44f) / 0.06f);
-        float tableEdge = Clamp01(1f - MathF.Abs(depth - bevel) / 0.012f);
-        c = Mix(c, Mix(Rgb(light), (1f, 1f, 1f), 0.5f), Math.Max(seam * 0.55f, tableEdge * 0.6f));
-
-        // Contorno escuro, reflexo especular e brilho em estrela.
-        float rim = Clamp01(1f - MathF.Abs(d + 0.012f) / 0.016f);
-        c = Mix(c, Rgb(edge), rim * 0.9f);
-        c = Mix(c, (1f, 1f, 1f), Clamp01(spec * 0.9f));
-        float sx = x + 0.20f, sy = y - 0.28f;
-        float star = Clamp01(1f - Len(sx, sy) / 0.06f) + Clamp01(1f - MathF.Abs(sx) / 0.012f) * Clamp01(1f - MathF.Abs(sy) / 0.16f)
-                   + Clamp01(1f - MathF.Abs(sy) / 0.012f) * Clamp01(1f - MathF.Abs(sx) / 0.16f);
-        c = Mix(c, (1f, 1f, 1f), Clamp01(star) * 0.85f);
-        if (polished)
+        var fs = facetShape ?? shape;   // forma usada para as facetas (pode ser a silhueta lisa)
+        int Sector(float px, float py)
         {
-            // Lapidação fina: mais brilho nas facetas e um segundo brilho em estrela.
-            c = Mix(c, Mix(Rgb(light), (1f, 1f, 1f), 0.4f), Clamp01(spec * 0.5f + diff * 0.15f));
-            float s2x = x - 0.22f, s2y = y + 0.18f;
-            float star2 = Clamp01(1f - Len(s2x, s2y) / 0.04f) + Clamp01(1f - MathF.Abs(s2x) / 0.01f) * Clamp01(1f - MathF.Abs(s2y) / 0.10f)
-                        + Clamp01(1f - MathF.Abs(s2y) / 0.01f) * Clamp01(1f - MathF.Abs(s2x) / 0.10f);
-            c = Mix(c, (1f, 1f, 1f), Clamp01(star2) * 0.7f);
-            star = Math.Max(star, star2);
+            const float h = 0.008f;
+            float gx = fs(px + h, py) - fs(px - h, py);
+            float gy = fs(px, py + h) - fs(px, py - h);
+            float ang = MathF.Atan2(gy, gx);
+            return (int)MathF.Round(ang / (MathF.Tau / facets));
         }
 
-        // Cristal: a mesa deixa ver um pouco através; as facetas são mais sólidas.
-        float alpha = table ? 0.84f : 0.96f;
-        alpha = Math.Max(alpha, Math.Max(rim, Clamp01(star)));
-        return (Clamp01(c.Item1), Clamp01(c.Item2), Clamp01(c.Item3), a * alpha);
+        // Normal da face = direção (arredondada) até a borda mais próxima, inclinada para fora.
+        int sec = Sector(x, y);
+        float q = sec * (MathF.Tau / facets);
+        const float slope = 0.75f;
+        float nx = MathF.Cos(q) * MathF.Sin(slope), ny = MathF.Sin(q) * MathF.Sin(slope), nz = MathF.Cos(slope);
+        const float lx = -0.48f, ly = 0.58f, lz = 0.66f;
+        float lit = Clamp01(nx * lx + ny * ly + nz * lz);
+        float hz = lz + 1f, hl = Len3(lx, ly, hz);
+        float spec = MathF.Pow(Clamp01((nx * lx + ny * ly + nz * hz) / hl), 30f);
+
+        var dk = Rgb(dark); var lt = Rgb(light);
+        var mid = Mix(dk, lt, 0.5f);
+        float k = Clamp01((lit - 0.25f) / 0.6f);
+        var c = k < 0.5f ? Mix(Mix(dk, (0f, 0f, 0f), 0.25f), mid, k * 2f) : Mix(mid, lt, (k - 0.5f) * 2f);
+
+        var cc = custom?.Invoke(x, y, d);
+        if (cc.HasValue) c = Mix(cc.Value, c, 0.15f);   // detalhes próprios (íris, olhos da caveira) quase intactos
+
+        // Arestas: onde a faceta muda (linha do meio de cada parte e divisas entre facetas).
+        const float e = 0.012f;
+        bool seam = Sector(x + e, y) != sec || Sector(x - e, y) != sec || Sector(x, y + e) != sec || Sector(x, y - e) != sec;
+        if (seam && !cc.HasValue && d < -0.02f) c = Mix(c, Mix(lt, (1f, 1f, 1f), 0.55f), 0.65f);
+
+        // Contorno, reflexo e brilho em estrela.
+        float rim = Clamp01(1f - MathF.Abs(d + 0.012f) / 0.016f);
+        c = Mix(c, Rgb(edge), rim * 0.9f);
+        c = Mix(c, (1f, 1f, 1f), Clamp01(spec * 0.8f));
+        float sx = x + 0.18f, sy = y - 0.28f;
+        float star = Clamp01(1f - Len(sx, sy) / 0.05f) + Clamp01(1f - MathF.Abs(sx) / 0.011f) * Clamp01(1f - MathF.Abs(sy) / 0.14f)
+                   + Clamp01(1f - MathF.Abs(sy) / 0.011f) * Clamp01(1f - MathF.Abs(sx) / 0.14f);
+        star *= shape(x, y) < -0.01f ? 1f : 0f;
+        c = Mix(c, (1f, 1f, 1f), Clamp01(star) * (polished ? 0.9f : 0.65f));
+        if (polished)
+        {
+            c = Mix(c, Mix(lt, (1f, 1f, 1f), 0.35f), Clamp01(k - 0.6f) * 0.6f);  // faces claras mais vivas
+            float s2x = x - 0.22f, s2y = y + 0.16f;
+            float star2 = Clamp01(1f - Len(s2x, s2y) / 0.035f) + Clamp01(1f - MathF.Abs(s2x) / 0.009f) * Clamp01(1f - MathF.Abs(s2y) / 0.09f)
+                        + Clamp01(1f - MathF.Abs(s2y) / 0.009f) * Clamp01(1f - MathF.Abs(s2x) / 0.09f);
+            star2 *= shape(x, y) < -0.01f ? 1f : 0f;
+            c = Mix(c, (1f, 1f, 1f), Clamp01(star2) * 0.7f);
+        }
+        return (Clamp01(c.Item1), Clamp01(c.Item2), Clamp01(c.Item3), a * 0.97f);
     });
+
+    /// <summary>Acha as pontas da forma (máximos locais do raio da borda) para a cintilação.</summary>
+    static void FindTips(Sd shape, out float[] tx, out float[] ty)
+    {
+        const int n = 72;
+        var r = new float[n];
+        for (int i = 0; i < n; i++)
+        {
+            float a = i * MathF.Tau / n, dx = MathF.Cos(a), dy = MathF.Sin(a);
+            float rr = 0.02f;
+            while (rr < 0.98f && shape(dx * rr, dy * rr) < 0f) rr += 0.01f;
+            r[i] = rr;
+        }
+        var xs = new List<float>(); var ys = new List<float>();
+        for (int i = 0; i < n; i++)
+        {
+            bool max = r[i] > 0.4f;
+            for (int k = 1; k <= 3 && max; k++)
+                if (r[(i + k) % n] > r[i] || r[(i - k + n) % n] >= r[i]) max = false;
+            if (!max) continue;
+            float a = i * MathF.Tau / n;
+            xs.Add(MathF.Cos(a) * (r[i] - 0.06f)); ys.Add(MathF.Sin(a) * (r[i] - 0.06f));
+        }
+        if (xs.Count == 0)   // forma arredondada: usa alguns pontos da borda
+            for (int i = 0; i < 4; i++)
+            {
+                int idx = (i * n / 4 + n / 8) % n;
+                float a = idx * MathF.Tau / n;
+                xs.Add(MathF.Cos(a) * r[idx] * 0.85f); ys.Add(MathF.Sin(a) * r[idx] * 0.85f);
+            }
+        tx = xs.ToArray(); ty = ys.ToArray();
+    }
 
     static float[] CrystalSmall(int size, Sd shape, int dark, int light, int edge) => Paint(size, (x, y) =>
     {

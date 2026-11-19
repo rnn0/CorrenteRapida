@@ -13,11 +13,11 @@ Mod de cliente (BepInEx) para o servidor **Sangria Falls** de V Rising. Adiciona
 - **Detecta trocas manuais** feitas pela janela original.
 - **Pré-carregamento invisível**: ao entrar no servidor, o mod abre e fecha a janela sem que ela apareça, para já conhecer os botões.
 - **Prévia do Lendário**: segure **Alt** com o mouse sobre uma bola para vê-la no nível máximo, com uma legenda do tempo de uso.
-- **Joias de cristal**: cada Corrente é uma bola com uma joia encaixada. Quando ativa, a joia se solta deixando o buraco na bola, e surge a aura do elemento.
+- **Joias de cristal lapidado**: cada Corrente é uma bola com uma joia em facetas, com um brilho que atravessa o cristal em loop e cintilações nas pontas. Quando ativa, a joia se solta, deixando um encaixe iluminado e rachado na cor do elemento, e surge a aura.
 
 | Corrente | Joia | Aura |
 |---|---|---|
-| Glacial | floco de neve | halo gelado, cristais e flocos caindo |
+| Glacial | estrela de gelo escuro | halo gelado, cristais e lascas de gelo girando |
 | Caos | caveira | fogo roxo e brasas |
 | Tempestade | raio amarelo | arcos elétricos |
 | Corrompida | olho com pupila em fenda | corrupção líquida e bolhas |
