@@ -1,0 +1,7 @@
+bin/
+obj/
+libs/
+*.user
+.vs/
+tools/preview/tex/
+tools/preview/frames.txt

@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Duas formas de compilar:
+    1) Padrão: referências pelos pacotes NuGet (BepInEx + VRising.Unhollowed.Client).
+    2) Com as DLLs do seu jogo: crie a pasta libs/ com
+         libs/core    = <V Rising>/BepInEx/core
+         libs/interop = <V Rising>/BepInEx/interop
+       (nunca envie libs/ para o GitHub; ela está no .gitignore)
+  -->
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>CorrenteRapida</AssemblyName>
+    <RootNamespace>CorrenteRapida</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <NoWarn>$(NoWarn);CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8625;MSB3277</NoWarn>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <DebugType>none</DebugType>
+    <UseLocalLibs Condition="Exists('$(MSBuildThisFileDirectory)libs/interop')">true</UseLocalLibs>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(UseLocalLibs)' != 'true'">
+    <PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.*" IncludeAssets="compile" />
+    <PackageReference Include="BepInEx.Core" Version="6.0.0-be.*" IncludeAssets="compile" />
+    <PackageReference Include="VRising.Unhollowed.Client" Version="1.1.*" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseLocalLibs)' == 'true'">
+    <Reference Include="$(MSBuildThisFileDirectory)libs/core/BepInEx.Core.dll" Private="false" />
+    <Reference Include="$(MSBuildThisFileDirectory)libs/core/BepInEx.Unity.IL2CPP.dll" Private="false" />
+    <Reference Include="$(MSBuildThisFileDirectory)libs/core/BepInEx.Unity.Common.dll" Private="false" />
+    <Reference Include="$(MSBuildThisFileDirectory)libs/core/Il2CppInterop.Runtime.dll" Private="false" />
+    <Reference Include="$(MSBuildThisFileDirectory)libs/core/Il2CppInterop.Common.dll" Private="false" />
+    <Reference Include="$(MSBuildThisFileDirectory)libs/core/0Harmony.dll" Private="false" />
+    <Reference Include="$(MSBuildThisFileDirectory)libs/interop/*.dll" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="tools/**" />
+  </ItemGroup>
+</Project>
