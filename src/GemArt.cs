@@ -409,21 +409,34 @@ internal static class GemArt
 
     static float Flake(float x, float y)
     {
-        float d = Len(x, y) - 0.15f;
+        // Floco natural: hexágono fino ligando os braços pelo meio, e as pontas
+        // cristalizadas saindo para fora dele.
+        float d = Len(x, y) - 0.12f;
+        const float hexR = 0.46f, tip = 0.86f;
         for (int k = 0; k < 6; k++)
         {
             float a = MathF.PI / 2f + k * MathF.PI / 3f;
             float dx = MathF.Cos(a), dy = MathF.Sin(a);
-            d = MathF.Min(d, Seg(x, y, 0, 0, dx * 0.80f, dy * 0.80f) - 0.055f);
-            foreach (var (dist, len) in new[] { (0.40f, 0.22f), (0.60f, 0.14f) })
+            // Braço principal, afinando até a ponta.
+            float pax = x, pay = y, bax = dx * tip, bay = dy * tip;
+            float h = Clamp01((pax * bax + pay * bay) / (bax * bax + bay * bay));
+            d = MathF.Min(d, Len(pax - bax * h, pay - bay * h) - (0.05f - 0.025f * h));
+            // Ponta cristalizada: losango no fim do braço.
+            Rot(x - dx * 0.80f, y - dy * 0.80f, MathF.PI / 2f - a, out float qx, out float qy);
+            d = MathF.Min(d, PolyN(qx, qy, new[] { 0f, 0.12f, 0.055f, 0f, 0f, -0.08f, -0.055f, 0f }));
+            // Galhos: um par dentro do hexágono, um par maior fora dele.
+            foreach (var (dist, len, w) in new[] { (0.28f, 0.12f, 0.030f), (0.62f, 0.17f, 0.034f) })
             {
                 float bx = dx * dist, by = dy * dist;
                 for (int sgn = -1; sgn <= 1; sgn += 2)
                 {
-                    float ba = a + sgn * MathF.PI / 4f;
-                    d = MathF.Min(d, Seg(x, y, bx, by, bx + MathF.Cos(ba) * len, by + MathF.Sin(ba) * len) - 0.04f);
+                    float ba = a + sgn * MathF.PI / 3.6f;
+                    d = MathF.Min(d, Seg(x, y, bx, by, bx + MathF.Cos(ba) * len, by + MathF.Sin(ba) * len) - w);
                 }
             }
+            // Hexágono fino ligando este braço ao próximo.
+            float a2 = a + MathF.PI / 3f;
+            d = MathF.Min(d, Seg(x, y, dx * hexR, dy * hexR, MathF.Cos(a2) * hexR, MathF.Sin(a2) * hexR) - 0.028f);
         }
         return d;
     }
