@@ -55,6 +55,7 @@ internal sealed class BarLogic
         public TextMeshProUGUI Label = null!;
         public bool HasArt;
         public GemIcon? Gem;
+        public bool WasPreview;
     }
 
     /// <summary>Bola + joia + aura de um elemento, desenhada em camadas (RawImages reaproveitadas).</summary>
@@ -161,8 +162,9 @@ internal sealed class BarLogic
         TrackRightClick();
         RefreshPanel(now);
         ResolveOpener(now);
+        WarmUp(now);
         RunSwitch(now);
-        if (_state == St.Idle) Harvest(now);
+        if (_state == St.Idle && _warmStage == 0) Harvest(now);
         UpdateBar(now);
         TrackUsage(now);
     }
@@ -174,7 +176,7 @@ internal sealed class BarLogic
         bool wasOpen = _panelOpen;
         _panelOpen = Alive(_root) && _root!.gameObject.activeInHierarchy;
 
-        if (!_panelOpen && (now >= _nextScan || _state == St.Opening))
+        if (!_panelOpen && (now >= _nextScan || _state == St.Opening || _warmStage == 1))
         {
             _nextScan = now + 0.4f;
             if (ScanForPanel()) _panelOpen = true;
@@ -213,7 +215,7 @@ internal sealed class BarLogic
     void OnPanelOpened(float now)
     {
         // Aprende qual botão abriu a janela: o último clique feito pouco antes dela aparecer.
-        if (_state == St.Idle && _lastClick != null && Alive(_lastClick) && now - _lastClickTime < 1.5f
+        if (_state == St.Idle && _warmStage == 0 && _lastClick != null && Alive(_lastClick) && now - _lastClickTime < 1.5f
             && !IsUnder(_lastClick.transform, _root!))
         {
             string path = PathOf(_lastClick.transform);
@@ -228,6 +230,86 @@ internal sealed class BarLogic
 
         ReadCards();
         if (Plugin.S.DumpPanel.Value && !_dumped) { _dumped = true; Dump(); }
+        LearnPanelLayer();
+    }
+
+    // ───────── pré-carregamento invisível ao entrar no servidor ─────────
+    // O mod guarda (em arquivo) em qual camada da interface a janela aparece. Na sessão seguinte,
+    // deixa essa camada invisível, abre a janela, aprende os botões, fecha e mostra a camada de novo.
+
+    int _warmStage;          // 0 parado, 1 abrindo, 2 fechando
+    bool _warmDone;
+    float _openerSince = -1f, _warmDeadline;
+    int _warmFrames;
+    CanvasGroup? _warmCg;
+    float _warmAlpha = 1f;
+
+    void LearnPanelLayer()
+    {
+        if (!Alive(_root) || _root!.parent == null) return;
+        var cv = _root.parent.GetComponentInParent<Canvas>();
+        if (cv == null) return;
+        string path = PathOf(cv.transform);
+        if (path == Plugin.S.PanelLayerPath.Value) return;
+        Plugin.S.PanelLayerPath.Value = path;
+        Plugin.S.File.Save();
+        Plugin.L.LogInfo($"[CorrenteRapida] Camada da janela aprendida: {path}");
+    }
+
+    void WarmUp(float now)
+    {
+        if (_warmDone || !Plugin.S.Preload.Value) return;
+        switch (_warmStage)
+        {
+            case 0:
+            {
+                if (_panelOpen) { _warmDone = true; return; }        // você mesmo já abriu
+                if (_state != St.Idle) return;
+                if (!OpenerVisible) { _openerSince = -1f; return; }
+                if (_openerSince < 0f) { _openerSince = now; return; }
+                if (now - _openerSince < 3f) return;                 // espera o HUD terminar de carregar
+
+                string path = Plugin.S.PanelLayerPath.Value;
+                var layer = string.IsNullOrEmpty(path) ? null : GameObject.Find(path);
+                if (layer == null) { _warmDone = true; return; }     // sem camada conhecida: não arrisca aparecer
+                _warmCg = layer.GetComponent<CanvasGroup>() ?? layer.AddComponent<CanvasGroup>();
+                _warmAlpha = _warmCg.alpha;
+                _warmCg.alpha = 0f;
+                _warmStage = 1;
+                _warmDeadline = now + 2.5f;
+                _nextScan = 0f;
+                if (!Click(_opener!)) FinishWarm("não consegui apertar o botão de abrir");
+                break;
+            }
+            case 1:
+                if (_panelOpen)
+                {
+                    ReadCards();
+                    if (_closeBtn != null && Alive(_closeBtn)) Click(_closeBtn);
+                    else Click(_opener!);
+                    _warmStage = 2;
+                    _warmFrames = 3;
+                }
+                else if (now > _warmDeadline) FinishWarm("a janela não abriu a tempo");
+                break;
+            case 2:
+                if (--_warmFrames > 0) return;
+                if (_panelOpen && OpenerVisible) Click(_opener!);
+                int known = 0;
+                foreach (var c in _cards) if (c?.ClickTarget != null && Alive(c.ClickTarget)) known++;
+                FinishWarm(null, known);
+                break;
+        }
+    }
+
+    void FinishWarm(string? error, int known = 0)
+    {
+        if (_warmCg != null && Alive(_warmCg)) _warmCg.alpha = _warmAlpha;
+        _warmCg = null;
+        _warmStage = 0;
+        _warmDone = true;
+        if (error != null) Plugin.L.LogWarning($"[CorrenteRapida] Pré-carregamento cancelado: {error}.");
+        else Plugin.L.LogInfo($"[CorrenteRapida] Pré-carregamento invisível concluído: {known} botão(ões) conhecido(s).");
     }
 
     /// <param name="updateStatus">
@@ -428,7 +510,7 @@ internal sealed class BarLogic
 
     void TrackMouse(float now)
     {
-        if (_state != St.Idle) return;
+        if (_state != St.Idle || _warmStage != 0) return;
         bool down;
         try { down = Input.GetMouseButtonDown(0); } catch { return; }
         if (!down) return;
@@ -515,7 +597,7 @@ internal sealed class BarLogic
     {
         try
         {
-            if (_state != St.Idle) return;
+            if (_state != St.Idle || _warmStage != 0) return;
             float t0 = Time.unscaledTime;
             if (t0 < _cooldownUntil || i == _pendingActive) return;
             var st = _cards[i]?.Status ?? Status.Unknown;
@@ -822,26 +904,30 @@ internal sealed class BarLogic
         return tex;
     }
 
-    void AnimateGem(SlotUI s, int idx, Status st)
+    void AnimateGem(SlotUI s, int idx, Status st, bool preview = false)
     {
         var g = s.Gem!;
         float now = Time.unscaledTime;
-        int level = _usage.Level(idx);
-        if (g.LastLevel >= 0 && level > g.LastLevel)
+        int level = preview ? 3 : _usage.Level(idx);
+        if (preview) { st = Status.Active; g.Settled = false; }
+        else if (g.LastLevel >= 0 && level > g.LastLevel)
         {
             g.FlashUntil = now + FlashTime;
             g.Settled = false;
             string[] nomes = { "Bruta", "Lapidada", "Lustrosa", "Lendária" };
             Plugin.L.LogInfo($"[CorrenteRapida] {Settings.Titles[idx]} subiu para {nomes[level]}!");
         }
-        if (level != g.LastLevel) g.Settled = false;
-        g.LastLevel = level;
+        if (!preview)
+        {
+            if (level != g.LastLevel) g.Settled = false;
+            g.LastLevel = level;
+        }
         float flash = Math.Max(0f, (g.FlashUntil - now) / FlashTime);
 
         // Anel de progresso.
         if (g.ProgressImg != null)
         {
-            bool show = Plugin.S.ShowProgress.Value && level < 3;
+            bool show = Plugin.S.ShowProgress.Value && level < 3 && !preview;
             if (g.ProgressImg.enabled != show) g.ProgressImg.enabled = show;
             if (show)
             {
@@ -886,6 +972,70 @@ internal sealed class BarLogic
             if (g.On[k]) { g.Pool[k].enabled = false; g.On[k] = false; }
     }
 
+    // ───────── prévia: segurar Alt com o mouse sobre uma bola ─────────
+
+    TextMeshProUGUI? _legend;
+    static readonly string[] LevelNames = { "Bruta", "Lapidada", "Lustrosa", "Lendária" };
+
+    /// <summary>Índice da bola sob o mouse enquanto Alt está pressionado, ou -1.</summary>
+    int HoverPreview()
+    {
+        int idx = -1;
+        try
+        {
+            if (Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt))
+            {
+                var mp = Input.mousePosition;
+                var p = new Vector2(mp.x, mp.y);
+                for (int i = 0; i < N; i++)
+                {
+                    var rt = _slots[i].Go.GetComponent<RectTransform>();
+                    if (RectTransformUtility.RectangleContainsScreenPoint(rt, p, null)) { idx = i; break; }
+                }
+            }
+        }
+        catch { idx = -1; }
+        UpdateLegend(idx);
+        return idx;
+    }
+
+    void UpdateLegend(int idx)
+    {
+        if (_legend == null && _bar != null)
+        {
+            var go = NewRect("Legenda", _bar.transform);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = rt.anchorMax = new Vector2(0f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.sizeDelta = new Vector2(320f, 22f);
+            _legend = go.AddComponent<TextMeshProUGUI>();
+            _legend.fontSize = 13;
+            _legend.alignment = TextAlignmentOptions.Center;
+            _legend.enableWordWrapping = false;
+            _legend.raycastTarget = false;
+            _legend.color = new Color(1f, 0.9f, 0.7f, 1f);
+            _legend.outlineWidth = 0.2f;
+            _legend.enabled = false;
+        }
+        if (_legend == null) return;
+        bool show = idx >= 0 && _font != null;
+        if (_legend.enabled != show) _legend.enabled = show;
+        if (!show) return;
+        if (_legend.font != _font) { _legend.font = _font; _legend.fontSharedMaterial = _font!.material; }
+
+        int lv = _usage.Level(idx);
+        string nome = Settings.Titles[idx].Replace("CORRENTE ", "");
+        nome = nome.Substring(0, 1) + nome.Substring(1).ToLowerInvariant();
+        string txt;
+        if (lv >= 3) txt = $"{nome} — {LevelNames[3]} ({_usage.Hours(idx):0.0} h)";
+        else txt = $"{nome} — {LevelNames[lv]} — {_usage.Hours(idx):0.0} h / {_usage.NextHours(idx):0} h até {LevelNames[lv + 1]}";
+        _legend.text = txt;
+
+        float size = Plugin.S.ButtonSize.Value, gap = Plugin.S.Spacing.Value;
+        _legend.rectTransform.anchoredPosition = new Vector2(idx * (size + gap) + size / 2f, -size / 2f - 4f);
+        _legend.transform.SetAsLastSibling();
+    }
+
     void LayoutSlots()
     {
         float size = Plugin.S.ButtonSize.Value, gap = Plugin.S.Spacing.Value;
@@ -914,6 +1064,7 @@ internal sealed class BarLogic
         }
 
         PositionBar();
+        int previewIdx = HoverPreview();
 
         for (int i = 0; i < N; i++)
         {
@@ -931,7 +1082,9 @@ internal sealed class BarLogic
             if (s.Gem == null && _styles != null) BuildGem(s, i, _styles[i]);
             if (s.Gem != null)
             {
-                AnimateGem(s, i, st);
+                bool prev = i == previewIdx;
+                if (prev != s.WasPreview) { s.WasPreview = prev; if (s.Gem != null) s.Gem.Settled = false; }
+                AnimateGem(s, i, st, prev);
                 continue;
             }
 

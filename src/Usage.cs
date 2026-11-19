@@ -89,6 +89,14 @@ internal sealed class Usage
         return h >= t[2] ? 3 : h >= t[1] ? 2 : h >= t[0] ? 1 : 0;
     }
 
+    /// <summary>Horas necessárias para o próximo nível.</summary>
+    public double NextHours(int i)
+    {
+        int lv = Level(i);
+        var t = Thresholds();
+        return lv >= 3 ? t[2] : t[lv];
+    }
+
     /// <summary>0..1 do caminho até o próximo nível (1 no Lendário).</summary>
     public float Progress(int i)
     {

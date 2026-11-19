@@ -10,7 +10,7 @@ public class Plugin : BasePlugin
 {
     public const string Guid = "sangria.correnterapida";
     public const string Name = "CorrenteRapida";
-    public const string Version = "2.0.0";
+    public const string Version = "2.1.0";
 
     internal static ManualLogSource L = null!;
     internal static Settings S = null!;
@@ -53,6 +53,8 @@ internal sealed class Settings
     public readonly ConfigEntry<int> ForceLevel;
     public readonly ConfigEntry<string> LevelHours;
     public readonly ConfigEntry<float> AfkMinutes;
+    public readonly ConfigEntry<bool> Preload;
+    public readonly ConfigEntry<string> PanelLayerPath;
 
     public Settings(ConfigFile f)
     {
@@ -75,6 +77,10 @@ internal sealed class Settings
         ForceLevel = f.Bind("Evolucao", "ForcarNivel", -1, "Força um nível em todos os botões para testar o visual: 0 Bruta, 1 Lapidada, 2 Lustrosa, 3 Lendária. -1 = usar o tempo real.");
         LevelHours = f.Bind("Evolucao", "HorasNiveis", "5,20,50", "Horas de uso para chegar em Lapidada, Lustrosa e Lendária.");
         AfkMinutes = f.Bind("Evolucao", "MinutosAfk", 5f, "Depois de tantos minutos sem mexer o mouse nem apertar teclas, o tempo para de contar.");
+        Preload = f.Bind("Geral", "PreCarregarJanela", true,
+            "Ao entrar no servidor, abre e fecha a janela de Correntes de forma invisível para aprender os botões (evita a janela aparecer na primeira troca).");
+        PanelLayerPath = f.Bind("Geral", "CaminhoCamadaJanela", "",
+            "Camada da interface onde a janela aparece. É aprendida sozinha; apague para reaprender.");
         DumpPanel = f.Bind("Debug", "SalvarEstruturaDaJanela", true, "Salva a estrutura da janela em BepInEx/config/CorrenteRapida_dump.txt (útil para diagnosticar).");
     }
 }

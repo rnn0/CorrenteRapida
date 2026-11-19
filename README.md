@@ -11,6 +11,8 @@ Mod de cliente (BepInEx) para o servidor **Sangria Falls** de V Rising. Adiciona
 - **Troca com um clique** (botão esquerdo ou direito). O mod aperta os próprios botões "USAR" do ScarletInterface: nenhuma mensagem é forjada e recarga/bloqueios continuam sendo controlados pelo servidor.
 - **Sem abrir a janela**: o mod guarda os botões e as ações da janela original e reaproveita depois, mesmo com ela fechada.
 - **Detecta trocas manuais** feitas pela janela original.
+- **Pré-carregamento invisível**: ao entrar no servidor, o mod abre e fecha a janela sem que ela apareça, para já conhecer os botões.
+- **Prévia do Lendário**: segure **Alt** com o mouse sobre uma bola para vê-la no nível máximo, com uma legenda do tempo de uso.
 - **Joias de cristal**: cada Corrente é uma bola com uma joia encaixada. Quando ativa, a joia se solta deixando o buraco na bola, e surge a aura do elemento.
 
 | Corrente | Joia | Aura |
@@ -50,6 +52,7 @@ Arquivo `BepInEx/config/sangria.correnterapida.cfg` (criado na primeira execuç�
 | Opção | Padrão | O que faz |
 |---|---|---|
 | `TrocaDireta` | `true` | troca sem abrir a janela |
+| `PreCarregarJanela` | `true` | aprende os botões de forma invisível ao entrar no servidor |
 | `IntervaloMinimo` | `1.2` | segundos mínimos entre duas trocas |
 | `BotaoDireito` | `true` | permite trocar com o botão direito |
 | `DeslocamentoX` / `DeslocamentoY` | `8` / `0` | posição da barra em relação ao botão original |
