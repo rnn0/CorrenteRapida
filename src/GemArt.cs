@@ -29,6 +29,7 @@ internal sealed class GemStyle
     // Evolução por tempo de uso.
     public int Gem2, RingSilver, RingGold, GemGlow, Shard, Progress;
     public int M1 = -1, M2 = -1;   // motivos do nível Lendário
+    public int Cracks, EnergyA, EnergyB; // rachaduras e energia no buraco da joia
 
     public const int Bruta = 0, Lapidada = 1, Lustrosa = 2, Lendaria = 3;
 
@@ -54,6 +55,13 @@ internal sealed class GemStyle
         {
             o.Add(new Spr(Hole, 0, 0, 1, 1, 0, e));
             o.Add(new Spr(Shadow, 0.05f * e, lift - 0.07f * e, s, s, 0, 0.4f * e));
+            // Energia da cor da joia ondulando dentro do buraco (duas texturas se alternando).
+            float w = 0.5f + 0.5f * MathF.Sin(t * 2.1f);
+            float pulseE = 0.88f + 0.12f * MathF.Sin(t * 3.3f);
+            o.Add(new Spr(EnergyA, 0, 0, 1, 1, 0, e * pulseE));          // sempre acesa
+            o.Add(new Spr(EnergyB, 0, 0, 1, 1, 0, e * w * 0.85f));      // ondulação por cima
+            // Rachaduras saindo do buraco, brilho pulsando.
+            o.Add(new Spr(Cracks, 0, 0, 1, 1, 0, e * (0.7f + 0.3f * MathF.Sin(t * 4.1f + 1f))));
         }
         o.Add(new Spr(level >= Lapidada ? Gem2 : Gem, gx, gy, s, s, 0, 1));
         if (level >= Lendaria)   // luz interna pulsando, mesmo encaixada
@@ -320,7 +328,7 @@ internal static class GemArt
                 break;
 
             case Gelo:
-                Base(g, 0x2F7FC0, 0x8FD0F8, 0x1A4F80, Flake, 0xBFE2FA, 0xFFFFFF, 0x4F86B4, 0x0F2A48);
+                Base(g, 0x2F7FC0, 0x8FD0F8, 0x1A4F80, Flake, 0xBFE2FA, 0xFFFFFF, 0x4F86B4, 0x0F2A48, energy: 0xA8E6FF);
                 g.Halo = g.Add(S, Halo(0xE6F8FF, 0x5FB8F0));
                 g.A1 = g.Add(S, Frost());
                 g.Particle = g.Add(P, Small(P, Flake, 0xCFE8FF, 0xFFFFFF, 0x7FB0D8));
@@ -329,7 +337,7 @@ internal static class GemArt
                 break;
 
             case Corrompida:
-                Base(g, 0x9A6AD0, 0xE6CCFF, 0x5A2E8A, Eye, 0x3A0F5A, 0x6E2A9E, 0x16031F, 0x24063A, EyeColor);
+                Base(g, 0x9A6AD0, 0xE6CCFF, 0x5A2E8A, Eye, 0x3A0F5A, 0x6E2A9E, 0x16031F, 0x24063A, EyeColor, energy: 0xC27CFF);
                 g.Halo = g.Add(S, Halo(0xD8A8FF, 0x5B178F));
                 g.A1 = g.Add(S, Liquid(2.3f, 0x4A1078, 0xB070F0));
                 g.A2 = g.Add(S, Liquid(9.1f, 0x5E1A90, 0xC890FF));
@@ -362,8 +370,9 @@ internal static class GemArt
     delegate (float r, float g, float b)? GemColorFn(float x, float y, float d);
 
     static void Base(GemStyle g, int ballDark, int ballLight, int ballRim, Sd shape,
-                     int gemDark, int gemLight, int gemEdge, int hole, GemColorFn? custom = null)
+                     int gemDark, int gemLight, int gemEdge, int hole, GemColorFn? custom = null, int energy = -1)
     {
+        int en = energy >= 0 ? energy : gemLight;
         g.Ball = g.Add(S, BallTex(ballDark, ballLight, ballRim));
         g.Hole = g.Add(S, HoleTex(shape, hole, ballLight));
         g.Shadow = g.Add(S, ShadowTex(shape));
@@ -374,6 +383,9 @@ internal static class GemArt
         g.GemGlow = g.Add(S, GlowTex(shape, gemLight));
         g.Shard = g.Add(P, CrystalSmall(P, ShardShape, gemDark, gemLight, gemEdge));
         g.Progress = g.Add(S, ProgressRing());
+        g.Cracks = g.Add(S, CracksTex(shape, en, g.Kind * 97 + 13));
+        g.EnergyA = g.Add(S, EnergyTex(shape, en, 3.7f + g.Kind));
+        g.EnergyB = g.Add(S, EnergyTex(shape, en, 11.3f + g.Kind));
     }
 
     // ───────────────────────── formas (distância com sinal) ─────────────────────────
@@ -846,6 +858,77 @@ internal static class GemArt
     });
 
     static float Len3(float x, float y, float z) => MathF.Sqrt(x * x + y * y + z * z);
+
+    /// <summary>Energia brilhante ondulando dentro do buraco (mais forte no fundo, escura junto à borda de cima).</summary>
+    static float[] EnergyTex(Sd shape, int color, float seed) => Paint(S, (x, y) =>
+    {
+        float d = shape(x, y) - 0.025f;
+        float a = Cover(d, S);
+        if (a <= 0f) return default;
+        float n = Fbm(x * 4.5f + seed, y * 4.5f - seed * 0.6f);
+        float veins = Clamp01(1f - MathF.Abs(n - 0.5f) / 0.09f);          // filetes de energia
+        float depth = Clamp01(-d / 0.08f);
+        float glow = Clamp01(0.70f + 0.5f * n) * depth + veins;
+        var col = Rgb(color);
+        var c = Mix((col.r * 0.75f, col.g * 0.75f, col.b * 0.75f), col, n);   // corpo saturado na cor da joia
+        c = Mix(c, (1f, 1f, 1f), veins * 0.45f);                             // filetes mais claros
+        bool topEdge = shape(x, y - 0.07f) - 0.025f > 0f;                 // sombra da borda de cima
+        if (topEdge) glow *= 0.5f;
+        return (c.r, c.g, c.b, a * Clamp01(glow));
+    });
+
+    /// <summary>Rachaduras saindo da borda do buraco pela bola, brilhando na cor da joia.</summary>
+    static float[] CracksTex(Sd shape, int color, int seed)
+    {
+        var rng = new Random(seed);
+        var lines = new List<(float x, float y)[]>();
+        int count = 7;
+        for (int i = 0; i < count; i++)
+        {
+            float ang = (i + (float)rng.NextDouble() * 0.6f) / count * MathF.Tau;
+            float dx = MathF.Cos(ang), dy = MathF.Sin(ang);
+            // Acha a borda do buraco andando do centro para fora nessa direção.
+            float r0 = 0.05f;
+            while (r0 < 0.9f && shape(dx * r0, dy * r0) - 0.025f < 0f) r0 += 0.01f;
+            if (r0 >= 0.88f) continue;
+            float len = 0.22f + (float)rng.NextDouble() * 0.25f;
+            var pts = new List<(float, float)> { (dx * r0, dy * r0) };
+            float cx = dx * r0, cy = dy * r0, a = ang;
+            int steps = 6;
+            for (int k = 0; k < steps; k++)
+            {
+                a += ((float)rng.NextDouble() - 0.5f) * 0.9f;
+                float st = len / steps;
+                cx += MathF.Cos(a) * st; cy += MathF.Sin(a) * st;
+                if (Len(cx, cy) > 0.90f) break;
+                pts.Add((cx, cy));
+                // Galho pequeno de vez em quando.
+                if (k == 2 && rng.NextDouble() < 0.6)
+                {
+                    float ba = a + (rng.NextDouble() < 0.5 ? -0.8f : 0.8f);
+                    float bx = cx + MathF.Cos(ba) * len * 0.35f, by = cy + MathF.Sin(ba) * len * 0.35f;
+                    if (Len(bx, by) < 0.90f) lines.Add(new[] { (cx, cy), (bx, by) });
+                }
+            }
+            if (pts.Count > 1) lines.Add(pts.ToArray());
+        }
+        return Paint(S, (x, y) =>
+        {
+            if (Len(x, y) > 0.93f) return default;
+            float d = 9f;
+            foreach (var pts in lines)
+                for (int j = 0; j + 1 < pts.Length; j++)
+                {
+                    // Afina ao longo da rachadura.
+                    float sd = Seg(x, y, pts[j].x, pts[j].y, pts[j + 1].x, pts[j + 1].y) - 0.016f * (1f - j / (float)pts.Length * 0.6f);
+                    d = MathF.Min(d, sd);
+                }
+            float core = Clamp01(0.5f - d * S * 0.5f);
+            float glow = MathF.Exp(-Math.Max(d, 0f) / 0.045f) * 0.9f;
+            var c = Mix(Rgb(color), (1f, 1f, 1f), core * 0.6f);
+            return (c.r, c.g, c.b, Clamp01(Math.Max(core, glow)));
+        });
+    }
 
     static float[] HoleTex(Sd shape, int dark, int lipColor) => Paint(S, (x, y) =>
     {
