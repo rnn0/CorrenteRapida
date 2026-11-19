@@ -859,74 +859,101 @@ internal static class GemArt
 
     static float Len3(float x, float y, float z) => MathF.Sqrt(x * x + y * y + z * z);
 
-    /// <summary>Energia brilhante ondulando dentro do buraco (mais forte no fundo, escura junto à borda de cima).</summary>
+    /// <summary>Estilo da energia no buraco: 1 luz derretida, 2 brilho na borda, 3 vórtice.</summary>
+    internal static int EnergyMode = 2;
+
     static float[] EnergyTex(Sd shape, int color, float seed) => Paint(S, (x, y) =>
     {
         float d = shape(x, y) - 0.025f;
         float a = Cover(d, S);
         if (a <= 0f) return default;
-        float n = Fbm(x * 4.5f + seed, y * 4.5f - seed * 0.6f);
-        float veins = Clamp01(1f - MathF.Abs(n - 0.5f) / 0.09f);          // filetes de energia
-        float depth = Clamp01(-d / 0.08f);
-        float glow = Clamp01(0.70f + 0.5f * n) * depth + veins;
         var col = Rgb(color);
-        var c = Mix((col.r * 0.75f, col.g * 0.75f, col.b * 0.75f), col, n);   // corpo saturado na cor da joia
-        c = Mix(c, (1f, 1f, 1f), veins * 0.45f);                             // filetes mais claros
-        bool topEdge = shape(x, y - 0.07f) - 0.025f > 0f;                 // sombra da borda de cima
-        if (topEdge) glow *= 0.5f;
-        return (c.r, c.g, c.b, a * Clamp01(glow));
+        var deep = (col.r * 0.45f, col.g * 0.45f, col.b * 0.45f);
+        float depth = Clamp01(-d / 0.10f);                    // 0 na borda, 1 por dentro
+        bool topEdge = shape(x, y - 0.07f) - 0.025f > 0f;    // borda de cima projeta sombra
+        switch (EnergyMode)
+        {
+            case 2: // brilho na borda: fundo escuro tingido, luz vazando pela borda
+            {
+                float rim = MathF.Exp(-(-d) / 0.035f);
+                var c = Mix(deep, col, rim);
+                c = Mix(c, Mix(col, (1f, 1f, 1f), 0.25f), rim * rim * 0.6f);
+                float alpha = 0.55f + 0.45f * rim;
+                if (topEdge) alpha *= 0.8f;
+                return (c.r, c.g, c.b, a * alpha);
+            }
+            case 3: // vórtice: espiral saturada
+            {
+                float r = Len(x, y), ang = MathF.Atan2(y, x);
+                float sp = MathF.Sin(ang * 3f + r * 14f + seed) * 0.5f + 0.5f;
+                float n = Fbm(x * 3f + seed, y * 3f);
+                float k = Clamp01(sp * 0.8f + n * 0.4f);
+                var c = Mix(deep, col, k);
+                c = Mix(c, Mix(col, (1f, 1f, 1f), 0.2f), Clamp01((k - 0.8f) * 4f) * 0.5f);
+                return (c.r, c.g, c.b, a * (topEdge ? 0.8f : 1f));
+            }
+            default: // 1: luz derretida, cor viva e uniforme, núcleo mais quente
+            {
+                float n = Fbm(x * 2.2f + seed, y * 2.2f - seed);
+                float k = Clamp01(0.45f + 0.55f * depth + (n - 0.5f) * 0.35f);
+                var c = Mix(deep, col, k);
+                c = Mix(c, Mix(col, (1f, 1f, 1f), 0.3f), Clamp01((k - 0.85f) * 5f) * 0.5f);
+                return (c.r, c.g, c.b, a * (topEdge ? 0.85f : 1f));
+            }
+        }
     });
 
-    /// <summary>Rachaduras saindo da borda do buraco pela bola, brilhando na cor da joia.</summary>
+    /// <summary>Rachaduras no fundo do buraco: saem da borda do encaixe em direção ao centro, brilhando na cor da joia.</summary>
     static float[] CracksTex(Sd shape, int color, int seed)
     {
         var rng = new Random(seed);
         var lines = new List<(float x, float y)[]>();
-        int count = 7;
+        const int count = 9;
         for (int i = 0; i < count; i++)
         {
             float ang = (i + (float)rng.NextDouble() * 0.6f) / count * MathF.Tau;
             float dx = MathF.Cos(ang), dy = MathF.Sin(ang);
-            // Acha a borda do buraco andando do centro para fora nessa direção.
-            float r0 = 0.05f;
-            while (r0 < 0.9f && shape(dx * r0, dy * r0) - 0.025f < 0f) r0 += 0.01f;
-            if (r0 >= 0.88f) continue;
-            float len = 0.22f + (float)rng.NextDouble() * 0.25f;
-            var pts = new List<(float, float)> { (dx * r0, dy * r0) };
-            float cx = dx * r0, cy = dy * r0, a = ang;
-            int steps = 6;
+            // Acha a borda do buraco nessa direção (do centro para fora).
+            float r0 = 0.02f;
+            while (r0 < 0.95f && shape(dx * r0, dy * r0) - 0.025f < 0f) r0 += 0.01f;
+            if (r0 < 0.08f || r0 >= 0.93f) continue;
+            // Começa um pouco para dentro da borda e anda em direção ao centro.
+            float cx = dx * (r0 - 0.02f), cy = dy * (r0 - 0.02f);
+            float a = ang + MathF.PI;
+            float len = r0 * (0.45f + (float)rng.NextDouble() * 0.4f);
+            var pts = new List<(float, float)> { (cx, cy) };
+            const int steps = 6;
             for (int k = 0; k < steps; k++)
             {
-                a += ((float)rng.NextDouble() - 0.5f) * 0.9f;
+                a += ((float)rng.NextDouble() - 0.5f) * 1.0f;
                 float st = len / steps;
                 cx += MathF.Cos(a) * st; cy += MathF.Sin(a) * st;
-                if (Len(cx, cy) > 0.90f) break;
                 pts.Add((cx, cy));
-                // Galho pequeno de vez em quando.
                 if (k == 2 && rng.NextDouble() < 0.6)
                 {
-                    float ba = a + (rng.NextDouble() < 0.5 ? -0.8f : 0.8f);
-                    float bx = cx + MathF.Cos(ba) * len * 0.35f, by = cy + MathF.Sin(ba) * len * 0.35f;
-                    if (Len(bx, by) < 0.90f) lines.Add(new[] { (cx, cy), (bx, by) });
+                    float ba = a + (rng.NextDouble() < 0.5 ? -0.9f : 0.9f);
+                    lines.Add(new[] { (cx, cy), (cx + MathF.Cos(ba) * len * 0.3f, cy + MathF.Sin(ba) * len * 0.3f) });
                 }
             }
-            if (pts.Count > 1) lines.Add(pts.ToArray());
+            lines.Add(pts.ToArray());
         }
         return Paint(S, (x, y) =>
         {
-            if (Len(x, y) > 0.93f) return default;
+            // Só dentro do buraco.
+            float inside = shape(x, y) - 0.025f;
+            if (inside > 0f) return default;
+            float clip = Clamp01(-inside / 0.015f);
             float d = 9f;
             foreach (var pts in lines)
                 for (int j = 0; j + 1 < pts.Length; j++)
                 {
-                    // Afina ao longo da rachadura.
-                    float sd = Seg(x, y, pts[j].x, pts[j].y, pts[j + 1].x, pts[j + 1].y) - 0.016f * (1f - j / (float)pts.Length * 0.6f);
+                    float sd = Seg(x, y, pts[j].x, pts[j].y, pts[j + 1].x, pts[j + 1].y) - 0.013f * (1f - j / (float)pts.Length * 0.6f);
                     d = MathF.Min(d, sd);
                 }
             float core = Clamp01(0.5f - d * S * 0.5f);
-            float glow = MathF.Exp(-Math.Max(d, 0f) / 0.045f) * 0.9f;
-            var c = Mix(Rgb(color), (1f, 1f, 1f), core * 0.6f);
-            return (c.r, c.g, c.b, Clamp01(Math.Max(core, glow)));
+            float glow = MathF.Exp(-Math.Max(d, 0f) / 0.035f) * 0.8f;
+            var c = Mix(Rgb(color), (1f, 1f, 1f), core * 0.45f);
+            return (c.r, c.g, c.b, Clamp01(Math.Max(core, glow)) * clip);
         });
     }
 
