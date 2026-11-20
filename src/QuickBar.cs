@@ -908,13 +908,13 @@ internal sealed class BarLogic
     {
         var g = s.Gem!;
         float now = Time.unscaledTime;
-        int level = preview ? 3 : _usage.Level(idx);
+        int level = preview ? Usage.MaxLevel : _usage.Level(idx);
         if (preview) { st = Status.Active; g.Settled = false; }
         else if (g.LastLevel >= 0 && level > g.LastLevel)
         {
             g.FlashUntil = now + FlashTime;
             g.Settled = false;
-            string[] nomes = { "Bruta", "Lapidada", "Lustrosa", "Lendária" };
+            var nomes = LevelNames;
             Plugin.L.LogInfo($"[CorrenteRapida] {Settings.Titles[idx]} subiu para {nomes[level]}!");
         }
         if (!preview)
@@ -927,7 +927,7 @@ internal sealed class BarLogic
         // Anel de progresso.
         if (g.ProgressImg != null)
         {
-            bool show = Plugin.S.ShowProgress.Value && level < 3 && !preview;
+            bool show = Plugin.S.ShowProgress.Value && level < Usage.MaxLevel && !preview;
             if (g.ProgressImg.enabled != show) g.ProgressImg.enabled = show;
             if (show)
             {
@@ -949,7 +949,7 @@ internal sealed class BarLogic
 
         // Parada e encaixada: nada se mexe, não precisa redesenhar.
         if (e <= 0f && g.Settled && st == g.LastStatus && flash <= 0f) return;
-        g.Settled = e <= 0f && level < 3 && flash <= 0f && !g.Style.AlwaysAnimate; // Lendária e cristais com brilho se mexem sempre
+        g.Settled = e <= 0f && level < GemStyle.Radiante && flash <= 0f && !g.Style.AlwaysAnimate; // Radiante+ e cristais com brilho se mexem sempre
         g.LastStatus = st;
 
         g.Style.Frame(e, now, level, flash, g.Buf);
@@ -975,7 +975,7 @@ internal sealed class BarLogic
     // ───────── prévia: segurar Alt com o mouse sobre uma bola ─────────
 
     TextMeshProUGUI? _legend;
-    static readonly string[] LevelNames = { "Bruta", "Lapidada", "Lustrosa", "Lendária" };
+    static readonly string[] LevelNames = { "Bruta", "Lapidada", "Brônzea", "Prateada", "Dourada", "Lustrosa", "Radiante", "Lendária" };
 
     /// <summary>Índice da bola sob o mouse enquanto Alt está pressionado, ou -1.</summary>
     int HoverPreview()
@@ -1027,7 +1027,7 @@ internal sealed class BarLogic
         string nome = Settings.Titles[idx].Replace("CORRENTE ", "");
         nome = nome.Substring(0, 1) + nome.Substring(1).ToLowerInvariant();
         string txt;
-        if (lv >= 3) txt = $"{nome} — {LevelNames[3]} ({_usage.Hours(idx):0.0} h)";
+        if (lv >= Usage.MaxLevel) txt = $"{nome} — {LevelNames[Usage.MaxLevel]} ({_usage.Hours(idx):0.0} h)";
         else txt = $"{nome} — {LevelNames[lv]} — {_usage.Hours(idx):0.0} h / {_usage.NextHours(idx):0} h até {LevelNames[lv + 1]}";
         _legend.text = txt;
 

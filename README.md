@@ -30,10 +30,14 @@ Cada Corrente evolui conforme o tempo que você passa com ela ativa (pausa após
 
 | Nível | Tempo | Visual |
 |---|---|---|
-| Bruta | 0 h | joia lapidada simples |
-| Lapidada | 5 h | lapidação fina e aro de prata |
-| Lustrosa | 20 h | aro de ouro com gemas, aura mais intensa |
-| Lendária | 50 h | joia com luz própria, fragmentos orbitando e um traço temático na aura |
+| Bruta | 0 h | joia lapidada |
+| Lapidada | 1 h | lapidação fina, mais brilho |
+| Brônzea | 2 h | aro de bronze |
+| Prateada | 3 h | aro de prata |
+| Dourada | 4 h | aro de ouro com gemas |
+| Lustrosa | 5 h | aura mais intensa, mais partículas |
+| Radiante | 20 h | luz interna pulsando e fragmentos orbitando |
+| Lendária | 50 h | segunda camada de aura e um traço temático na aura |
 
 <p align="center"><img src="docs/niveis.png" alt="Os quatro níveis de cada Corrente"></p>
 
@@ -55,10 +59,10 @@ Arquivo `BepInEx/config/sangria.correnterapida.cfg` (criado na primeira execuç�
 | `PreCarregarJanela` | `true` | aprende os botões de forma invisível ao entrar no servidor |
 | `IntervaloMinimo` | `1.2` | segundos mínimos entre duas trocas |
 | `BotaoDireito` | `true` | permite trocar com o botão direito |
-| `DeslocamentoX` / `DeslocamentoY` | `8` / `0` | posição da barra em relação ao botão original |
+| `DeslocamentoX` / `DeslocamentoY` | `8` / `42` | posição da barra em relação ao botão original |
 | `TamanhoBotao` | `34` | tamanho de cada bola |
-| `ForcarNivel` | `-1` | `0`–`3` força um nível para ver o visual (`-1` = tempo real) |
-| `HorasNiveis` | `5,20,50` | horas para Lapidada, Lustrosa e Lendária |
+| `ForcarNivel` | `-1` | `0`–`7` força um nível para ver o visual (`-1` = tempo real) |
+| `HorasNiveis` | `1,2,3,4,5,20,50` | horas para cada um dos 7 níveis |
 | `MostrarProgresso` | `true` | anel de progresso em volta das bolas |
 
 ## Compilando

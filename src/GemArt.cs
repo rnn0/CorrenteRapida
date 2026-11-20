@@ -27,7 +27,7 @@ internal sealed class GemStyle
     public int Halo = -1, A1 = -1, A2 = -1, A3 = -1, A4 = -1, Particle = -1;
 
     // Evolução por tempo de uso.
-    public int Gem2, RingSilver, RingGold, GemGlow, Shard, Progress;
+    public int Gem2, RingBronze, RingSilver, RingGold, GemGlow, Shard, Progress;
     public int M1 = -1, M2 = -1;   // motivos do nível Lendário
     public int Cracks, EnergyA, EnergyB; // rachaduras e energia no buraco da joia
     public int[] Shine = Array.Empty<int>(); // brilho atravessando a joia (quadros)
@@ -35,7 +35,7 @@ internal sealed class GemStyle
     public float[] TipX = Array.Empty<float>(), TipY = Array.Empty<float>(); // pontas da joia (coords da textura)
     public bool AlwaysAnimate => Shine.Length > 0;
 
-    public const int Bruta = 0, Lapidada = 1, Lustrosa = 2, Lendaria = 3;
+    public const int Bruta = 0, Lapidada = 1, Bronzea = 2, Prateada = 3, Dourada = 4, Lustrosa = 5, Radiante = 6, Lendaria = 7;
 
     /// <summary>
     /// Monta as camadas do quadro. e = 0 encaixada .. 1 solta/ativa; t = segundos;
@@ -53,8 +53,9 @@ internal sealed class GemStyle
         if (on && level >= Lendaria) LegendBack(e, t, gx, gy, cy, o);
         if (on) AuraBack(ea, t, gx, gy, cy, o);
         o.Add(new Spr(Ball, 0, 0, 1, 1, 0, 1));
-        if (level == Lapidada) o.Add(new Spr(RingSilver, 0, 0, 1, 1, 0, 1));
-        else if (level >= Lustrosa) o.Add(new Spr(RingGold, 0, 0, 1, 1, 0, 1));
+        if (level == Bronzea) o.Add(new Spr(RingBronze, 0, 0, 1, 1, 0, 1));
+        else if (level == Prateada) o.Add(new Spr(RingSilver, 0, 0, 1, 1, 0, 1));
+        else if (level >= Dourada) o.Add(new Spr(RingGold, 0, 0, 1, 1, 0, 1));
         if (on)
         {
             o.Add(new Spr(Hole, 0, 0, 1, 1, 0, e));
@@ -88,10 +89,11 @@ internal sealed class GemStyle
                 o.Add(new Spr(Glint, gx + TipX[tipI] * 0.5f * s, gy + TipY[tipI] * 0.5f * s, gsz, gsz, 0, tw));
             }
         }
-        if (level >= Lendaria)   // luz interna pulsando, mesmo encaixada
+        if (level >= Radiante)   // luz interna pulsando, mesmo encaixada
             o.Add(new Spr(GemGlow, gx, gy, s * 1.1f, s * 1.1f, 0, 0.30f + 0.20f * MathF.Sin(t * 2.2f) + 0.2f * e));
         if (on) AuraFront(ea, t, level, o);
         if (on && level >= Lendaria) LegendFront(e, t, cy, o);
+        if (on && level >= Radiante) Shards(e, t, cy, o);
         if (flash > 0.001f)
         {
             float g = 1f + (1f - flash) * 1.2f;
@@ -175,7 +177,11 @@ internal sealed class GemStyle
                 }
                 break;
         }
-        // Fragmentos de cristal orbitando (todos os elementos).
+    }
+
+    /// <summary>Fragmentos de cristal orbitando (a partir da Radiante).</summary>
+    void Shards(float e, float t, float cy, List<Spr> o)
+    {
         for (int k = 0; k < 3; k++)
         {
             float ang = t * 1.2f + k * MathF.Tau / 3f;
@@ -407,8 +413,9 @@ internal static class GemArt
         Sd? fs = shape == (Sd)Skull ? SkullSilhouette : null;
         g.Gem = g.Add(S, CrystalTex(shape, gemDark, gemLight, gemEdge, custom, facetShape: fs));
         g.Gem2 = g.Add(S, CrystalTex(shape, gemDark, gemLight, gemEdge, custom, facets: 12f, polished: true, facetShape: fs));
-        g.RingSilver = g.Add(S, Ring(false));
-        g.RingGold = g.Add(S, Ring(true));
+        g.RingBronze = g.Add(S, Ring(0));
+        g.RingSilver = g.Add(S, Ring(1));
+        g.RingGold = g.Add(S, Ring(2));
         g.GemGlow = g.Add(S, GlowTex(shape, gemLight));
         g.Shard = g.Add(P, CrystalSmall(P, ShardShape, gemDark, gemLight, gemEdge));
         g.Progress = g.Add(S, ProgressRing());
@@ -764,8 +771,10 @@ internal static class GemArt
     static float ShardShape(float x, float y) => PolyN(x, y, new[] { 0f, 0.95f, 0.42f, 0.1f, 0f, -0.95f, -0.42f, 0.1f });
 
     /// <summary>Aro em volta da bola: prata lisa ou ouro com pequenas gemas.</summary>
-    static float[] Ring(bool gold) => Paint(S, (x, y) =>
+    /// <param name="metal">0 bronze, 1 prata, 2 ouro (com gemas).</param>
+    static float[] Ring(int metal) => Paint(S, (x, y) =>
     {
+        bool gold = metal == 2;
         float r = Len(x, y);
         float inner = gold ? 0.86f : 0.89f, outer = 0.99f;
         float d = MathF.Max(inner - r, r - outer);
@@ -774,8 +783,8 @@ internal static class GemArt
         // Metal: claro em cima à esquerda, escuro embaixo à direita, com faixa brilhante no meio.
         float l = Clamp01(0.5f + 0.5f * (-0.6f * x + 0.8f * y) / Math.Max(r, 0.01f));
         float mid = 1f - MathF.Abs((r - (inner + outer) / 2f) / ((outer - inner) / 2f));
-        var dark = gold ? Rgb(0x7A4E0A) : Rgb(0x5E6670);
-        var light = gold ? Rgb(0xFFE38A) : Rgb(0xF2F6FA);
+        var dark = metal == 2 ? Rgb(0x7A4E0A) : metal == 1 ? Rgb(0x5E6670) : Rgb(0x4A2810);
+        var light = metal == 2 ? Rgb(0xFFE38A) : metal == 1 ? Rgb(0xF2F6FA) : Rgb(0xE0A06A);
         var c = Mix(dark, light, Clamp01(l * 0.7f + mid * 0.4f));
         float alpha = a;
         if (gold)

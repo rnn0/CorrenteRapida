@@ -10,7 +10,7 @@ public class Plugin : BasePlugin
 {
     public const string Guid = "sangria.correnterapida";
     public const string Name = "CorrenteRapida";
-    public const string Version = "2.3.1";
+    public const string Version = "2.4.0";
 
     internal static ManualLogSource L = null!;
     internal static Settings S = null!;
@@ -63,7 +63,7 @@ internal sealed class Settings
         OpenerPath = f.Bind("Geral", "CaminhoBotaoAbrir", "",
             "Caminho do botão que abre 'Trocar de Corrente'. É aprendido sozinho: abra a janela uma vez pelo botão normal. Apague para reaprender.");
         OffsetX = f.Bind("Posicao", "DeslocamentoX", 8f, "Distância horizontal da barra em relação ao botão original.");
-        OffsetY = f.Bind("Posicao", "DeslocamentoY", 0f, "Distância vertical da barra em relação ao botão original.");
+        OffsetY = f.Bind("Posicao", "DeslocamentoY", 42f, "Distância vertical da barra em relação ao botão original.");
         ButtonSize = f.Bind("Posicao", "TamanhoBotao", 34f, "Tamanho de cada botão.");
         Spacing = f.Bind("Posicao", "Espacamento", 4f, "Espaço entre os botões.");
         UseCardArt = f.Bind("Visual", "UsarArteDasCartas", true, "Usa um recorte da arte de cada Corrente como ícone (depois que a janela for aberta uma vez).");
@@ -74,8 +74,19 @@ internal sealed class Settings
             "Segundos mínimos entre duas trocas, para o servidor terminar uma antes da outra.");
         RightClick = f.Bind("Geral", "BotaoDireito", true, "Permite trocar a Corrente clicando com o botão direito também.");
         ShowProgress = f.Bind("Evolucao", "MostrarProgresso", true, "Mostra o anel fino de progresso até o próximo nível em volta de cada bola.");
-        ForceLevel = f.Bind("Evolucao", "ForcarNivel", -1, "Força um nível em todos os botões para testar o visual: 0 Bruta, 1 Lapidada, 2 Lustrosa, 3 Lendária. -1 = usar o tempo real.");
-        LevelHours = f.Bind("Evolucao", "HorasNiveis", "5,20,50", "Horas de uso para chegar em Lapidada, Lustrosa e Lendária.");
+        ForceLevel = f.Bind("Evolucao", "ForcarNivel", -1,
+            "Força um nível em todos os botões para testar o visual: 0 Bruta, 1 Lapidada, 2 Brônzea, 3 Prateada, 4 Dourada, 5 Lustrosa, 6 Radiante, 7 Lendária. -1 = usar o tempo real.");
+        LevelHours = f.Bind("Evolucao", "HorasNiveis", "1,2,3,4,5,20,50",
+            "Horas de uso para Lapidada, Brônzea, Prateada, Dourada, Lustrosa, Radiante e Lendária (7 valores).");
+        // Migração de versões antigas: posição e níveis ainda no padrão antigo passam para o novo.
+        var cfgVersion = f.Bind("Interno", "VersaoConfig", 1, "Não altere.");
+        if (cfgVersion.Value < 2)
+        {
+            if (OffsetY.Value == 0f) OffsetY.Value = 42f;
+            if (LevelHours.Value.Replace(" ", "") == "5,20,50") LevelHours.Value = "1,2,3,4,5,20,50";
+            cfgVersion.Value = 2;
+            f.Save();
+        }
         AfkMinutes = f.Bind("Evolucao", "MinutosAfk", 5f, "Depois de tantos minutos sem mexer o mouse nem apertar teclas, o tempo para de contar.");
         Preload = f.Bind("Geral", "PreCarregarJanela", true,
             "Ao entrar no servidor, abre e fecha a janela de Correntes de forma invisível para aprender os botões (evita a janela aparecer na primeira troca).");
