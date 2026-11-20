@@ -130,13 +130,9 @@ internal sealed class GemStyle
                 o.Add(new Spr(M1, 0, cy, 2.7f, 2.7f, 8f * MathF.Sin(t * 0.7f), e * 0.85f));
                 o.Add(new Spr(M2, 0, cy, 2.5f, 2.5f, -10f * MathF.Sin(t * 0.9f + 1f), e * 0.75f));
                 break;
-            case GemArt.Luz:         // asas de luz + rosácea de vitral
-            {
-                float spread = 0.85f + 0.15f * MathF.Sin(t * 1.6f);
-                o.Add(new Spr(M2, gx, gy, 2.9f * spread * e, 2.9f, 0, e));
-                o.Add(new Spr(M1, gx, gy, 1.55f, 1.55f, t * 8f, e * 0.9f));
+            case GemArt.Luz:         // rosácea de vitral girando atrás do sol
+                o.Add(new Spr(M1, gx, gy, 1.45f, 1.45f, t * 8f, e * 0.6f));
                 break;
-            }
         }
     }
 
@@ -144,6 +140,14 @@ internal sealed class GemStyle
     {
         switch (Kind)
         {
+            case GemArt.Luz:         // auréola dourada flutuando acima do sol
+            {
+                float gy = cy * 2f;
+                float bob = 0.03f * MathF.Sin(t * 2f);
+                float glow = 0.85f + 0.15f * MathF.Sin(t * 3.1f);
+                o.Add(new Spr(M2, 0, gy + 0.66f + bob, 1.10f, 0.36f, 0, e * glow));
+                break;
+            }
             case GemArt.Sangue:      // morcegos circulando
                 for (int k = 0; k < 5; k++)
                 {
@@ -344,7 +348,7 @@ internal static class GemArt
                 g.Halo = g.Add(S, Halo(0xFFE89A, 0xFF8A1E));
                 g.A1 = g.Add(S, Beams());
                 g.M1 = g.Add(S, Rosette());
-                g.M2 = g.Add(S, LightWings());
+                g.M2 = g.Add(S, Aureola());
                 break;
 
             case Sangue:
@@ -993,6 +997,20 @@ internal static class GemArt
         float aa = 0.80f;
         if (lead < 0.022f) { c = Rgb(0x3A2208); aa = 0.95f; }
         return (c.r, c.g, c.b, aa * Cover(r - 0.95f, S));
+    });
+
+    /// <summary>Luz: auréola dourada (anel com brilho; achatada pelo tamanho do desenho).</summary>
+    static float[] Aureola() => Paint(S, (x, y) =>
+    {
+        float r = Len(x, y);
+        float ring = Clamp01(1f - MathF.Abs(r - 0.68f) / 0.15f);
+        float glow = MathF.Exp(-MathF.Abs(r - 0.68f) / 0.16f) * 0.8f;
+        // Mais claro na frente (embaixo), como metal polido iluminado; núcleo quase branco.
+        float l = Clamp01(0.55f + 0.45f * (-y));
+        var c = Mix(Rgb(0xE0A020), Rgb(0xFFF8D0), Clamp01(ring * 0.7f + l * 0.5f));
+        float a = Clamp01(Math.Max(ring, glow));
+        if (r > 0.98f) a = 0f;
+        return (c.r, c.g, c.b, a);
     });
 
     /// <summary>Luz: par de asas de penas de luz, abertas para cima e para fora.</summary>

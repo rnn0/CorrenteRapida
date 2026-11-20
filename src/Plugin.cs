@@ -10,7 +10,7 @@ public class Plugin : BasePlugin
 {
     public const string Guid = "sangria.correnterapida";
     public const string Name = "CorrenteRapida";
-    public const string Version = "2.4.0";
+    public const string Version = "2.4.1";
 
     internal static ManualLogSource L = null!;
     internal static Settings S = null!;
@@ -64,8 +64,8 @@ internal sealed class Settings
             "Caminho do botão que abre 'Trocar de Corrente'. É aprendido sozinho: abra a janela uma vez pelo botão normal. Apague para reaprender.");
         OffsetX = f.Bind("Posicao", "DeslocamentoX", 8f, "Distância horizontal da barra em relação ao botão original.");
         OffsetY = f.Bind("Posicao", "DeslocamentoY", 42f, "Distância vertical da barra em relação ao botão original.");
-        ButtonSize = f.Bind("Posicao", "TamanhoBotao", 34f, "Tamanho de cada botão.");
-        Spacing = f.Bind("Posicao", "Espacamento", 4f, "Espaço entre os botões.");
+        ButtonSize = f.Bind("Posicao", "TamanhoBotao", 44f, "Tamanho de cada botão.");
+        Spacing = f.Bind("Posicao", "Espacamento", 14f, "Espaço entre os botões.");
         UseCardArt = f.Bind("Visual", "UsarArteDasCartas", true, "Usa um recorte da arte de cada Corrente como ícone (depois que a janela for aberta uma vez).");
         HidePanelDuringSwitch = f.Bind("Visual", "EsconderJanelaNaTroca", true, "Deixa a janela invisível enquanto o mod troca a Corrente.");
         DirectSwitch = f.Bind("Geral", "TrocaDireta", true,
@@ -85,6 +85,13 @@ internal sealed class Settings
             if (OffsetY.Value == 0f) OffsetY.Value = 42f;
             if (LevelHours.Value.Replace(" ", "") == "5,20,50") LevelHours.Value = "1,2,3,4,5,20,50";
             cfgVersion.Value = 2;
+            f.Save();
+        }
+        if (cfgVersion.Value < 3)
+        {
+            if (ButtonSize.Value == 34f) ButtonSize.Value = 44f;
+            if (Spacing.Value == 4f) Spacing.Value = 14f;
+            cfgVersion.Value = 3;
             f.Save();
         }
         AfkMinutes = f.Bind("Evolucao", "MinutosAfk", 5f, "Depois de tantos minutos sem mexer o mouse nem apertar teclas, o tempo para de contar.");

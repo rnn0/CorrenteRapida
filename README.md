@@ -60,7 +60,7 @@ Arquivo `BepInEx/config/sangria.correnterapida.cfg` (criado na primeira execuç�
 | `IntervaloMinimo` | `1.2` | segundos mínimos entre duas trocas |
 | `BotaoDireito` | `true` | permite trocar com o botão direito |
 | `DeslocamentoX` / `DeslocamentoY` | `8` / `42` | posição da barra em relação ao botão original |
-| `TamanhoBotao` | `34` | tamanho de cada bola |
+| `TamanhoBotao` | `44` | tamanho de cada bola |
 | `ForcarNivel` | `-1` | `0`–`7` força um nível para ver o visual (`-1` = tempo real) |
 | `HorasNiveis` | `1,2,3,4,5,20,50` | horas para cada um dos 7 níveis |
 | `MostrarProgresso` | `true` | anel de progresso em volta das bolas |
