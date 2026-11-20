@@ -999,6 +999,41 @@ internal sealed class BarLogic
         return idx;
     }
 
+    TextMeshProUGUI? _notice;
+    float _noticeUntil = -1f;
+    string? _noticeShown;
+
+    /// <summary>Aviso de atualização (vindo do Updater) embaixo da barra por alguns segundos.</summary>
+    void ShowUpdateNotice(float now)
+    {
+        var msg = Updater.Notice;
+        if (msg != null && msg != _noticeShown && _font != null && _bar != null)
+        {
+            _noticeShown = msg;
+            _noticeUntil = now + 25f;
+            if (_notice == null)
+            {
+                var go = NewRect("Aviso", _bar.transform);
+                var rt = go.GetComponent<RectTransform>();
+                rt.anchorMin = rt.anchorMax = new Vector2(0f, 0.5f);
+                rt.pivot = new Vector2(0f, 1f);
+                rt.sizeDelta = new Vector2(420f, 22f);
+                _notice = go.AddComponent<TextMeshProUGUI>();
+                _notice.fontSize = 13;
+                _notice.enableWordWrapping = false;
+                _notice.raycastTarget = false;
+                _notice.color = new Color(1f, 0.85f, 0.45f, 1f);
+                _notice.outlineWidth = 0.2f;
+            }
+            _notice.font = _font; _notice.fontSharedMaterial = _font.material;
+            _notice.text = msg;
+        }
+        if (_notice == null) return;
+        bool show = now < _noticeUntil;
+        if (_notice.enabled != show) _notice.enabled = show;
+        if (show) _notice.rectTransform.anchoredPosition = new Vector2(0f, -Plugin.S.ButtonSize.Value / 2f - 26f);
+    }
+
     void UpdateLegend(int idx)
     {
         if (_legend == null && _bar != null)
@@ -1064,6 +1099,7 @@ internal sealed class BarLogic
         }
 
         PositionBar();
+        ShowUpdateNotice(now);
         int previewIdx = HoverPreview();
 
         for (int i = 0; i < N; i++)

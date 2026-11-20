@@ -49,12 +49,23 @@ Um anel fino em volta de cada bola mostra o progresso até o próximo nível. O 
 2. Baixe o `CorrenteRapida.dll` na página de [Releases](../../releases) e coloque em `BepInEx/plugins`.
 3. Entre no servidor e abra a janela "Trocar de Corrente" uma vez pelo botão normal: o mod aprende onde ele fica e a barra aparece.
 
+## Atualização automática
+
+A partir da 2.5.0, o mod consulta a última Release deste repositório ao abrir o jogo. Em `[Atualizacao] Modo`:
+
+- **Avisar** (padrão): mostra um aviso embaixo da barra quando há versão nova.
+- **Automatico**: baixa a DLL nova, confere o SHA-256 publicado na Release e a instala; ela passa a valer na próxima vez que o jogo abrir.
+- **Desligado**: não consulta nada.
+
+O mod só baixa deste repositório, e tudo o que faz fica registrado no `LogOutput.log`.
+
 ## Configuração
 
 Arquivo `BepInEx/config/sangria.correnterapida.cfg` (criado na primeira execução). Destaques:
 
 | Opção | Padrão | O que faz |
 |---|---|---|
+| `Modo` (Atualizacao) | `Avisar` | `Automatico`, `Avisar` ou `Desligado` |
 | `TrocaDireta` | `true` | troca sem abrir a janela |
 | `PreCarregarJanela` | `true` | aprende os botões de forma invisível ao entrar no servidor |
 | `IntervaloMinimo` | `1.2` | segundos mínimos entre duas trocas |

@@ -20,6 +20,8 @@ jobs:
           dotnet-version: '6.0.x'
       - name: Compilar
         run: dotnet build CorrenteRapida.csproj -c Release
+      - name: Gerar SHA-256 (o atualizador do mod confere antes de instalar)
+        run: sha256sum bin/Release/CorrenteRapida.dll | cut -d' ' -f1 > CorrenteRapida.dll.sha256
       - name: Montar pacote
         run: |
           mkdir pacote
@@ -30,6 +32,7 @@ jobs:
           name: CorrenteRapida
           path: |
             bin/Release/CorrenteRapida.dll
+            CorrenteRapida.dll.sha256
             CorrenteRapida.zip
       - name: Anexar arquivos na release (tag v* ou release publicada)
         if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
@@ -37,4 +40,5 @@ jobs:
         with:
           files: |
             bin/Release/CorrenteRapida.dll
+            CorrenteRapida.dll.sha256
             CorrenteRapida.zip
