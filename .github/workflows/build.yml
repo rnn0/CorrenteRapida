@@ -3,7 +3,7 @@ name: Compilar
 on:
   push:
     branches: [ main ]
-    tags: [ 'v*' ]
+    tags: [ '*' ]
   pull_request:
   release:
     types: [ published ]
@@ -32,7 +32,7 @@ jobs:
             bin/Release/CorrenteRapida.dll
             CorrenteRapida.zip
       - name: Anexar arquivos na release (tag v* ou release publicada)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
