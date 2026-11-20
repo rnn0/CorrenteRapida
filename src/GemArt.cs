@@ -28,7 +28,8 @@ internal sealed class GemStyle
 
     // Evolução por tempo de uso.
     public int Gem2, RingBronze, RingSilver, RingGold, GemGlow, Shard, Progress;
-    public int M1 = -1, M2 = -1;   // motivos do nível Lendário
+    public int M1 = -1, M2 = -1, M3 = -1, M4 = -1, M5 = -1, M6 = -1;   // motivos do nível Lendário
+    internal static int MegaraMode = 2;   // 1 ouroboros, 2 tendrils de simbionte
     public int Cracks, EnergyA, EnergyB; // rachaduras e energia no buraco da joia
     public int[] Shine = Array.Empty<int>(); // brilho atravessando a joia (quadros)
     public int Glint = -1;                   // cintilação nas pontas
@@ -130,6 +131,25 @@ internal sealed class GemStyle
                 o.Add(new Spr(M1, 0, cy, 2.7f, 2.7f, 8f * MathF.Sin(t * 0.7f), e * 0.85f));
                 o.Add(new Spr(M2, 0, cy, 2.5f, 2.5f, -10f * MathF.Sin(t * 0.9f + 1f), e * 0.75f));
                 break;
+            case GemArt.Corrompida:
+                if (MegaraMode == 2)
+                {
+                    // Tendrils de simbionte: cada um sai de trás da bola e se contorce sozinho.
+                    int[] tex = { M4, M5, M6 };
+                    for (int k = 0; k < 8; k++)
+                    {
+                        float baseAng = k * 45f + 22.5f + (Hash(k * 29 + 3) - 0.5f) * 26f;   // irregular, orgânico
+                        float sway = 11f * MathF.Sin(t * 1.3f + k * 1.7f) + 5f * MathF.Sin(t * 2.9f + k);
+                        float ang = (baseAng + sway) * MathF.PI / 180f;
+                        float len = (0.80f + 0.50f * Hash(k * 13 + 5)) * (1f + 0.08f * MathF.Sin(t * 1.9f + k * 2.3f)) * e;
+                        float wid = len * 0.55f;
+                        // Centro da peça = base (perto da borda da bola) + metade do comprimento na direção do tentáculo.
+                        float dx = -MathF.Sin(ang), dy = MathF.Cos(ang);
+                        float bx = dx * 0.30f, by = cy + dy * 0.30f;
+                        o.Add(new Spr(tex[k % 3], bx + dx * len * 0.5f, by + dy * len * 0.5f, wid, len, baseAng + sway, e));
+                    }
+                }
+                break;
             case GemArt.Luz:         // rosácea de vitral girando atrás do sol
                 o.Add(new Spr(M1, gx, gy, 1.45f, 1.45f, t * 8f, e * 0.6f));
                 break;
@@ -158,27 +178,9 @@ internal sealed class GemStyle
                     o.Add(new Spr(M2, MathF.Cos(ang) * r, cy + MathF.Sin(ang) * r * 0.72f, 0.34f, 0.24f * flap, tilt, e));
                 }
                 break;
-            case GemArt.Corrompida:  // serpentes de corrupção enroladas na bola
-                for (int sn = 0; sn < 2; sn++)
-                {
-                    float rise = MathF.Pow(Math.Max(0f, MathF.Sin(t * 0.9f + sn * 2.1f)), 4f);
-                    for (int k = 13; k >= 0; k--)
-                    {
-                        float th = sn * MathF.PI + t * 0.8f - k * 0.22f;
-                        float r = 0.58f + 0.05f * MathF.Sin(t * 3f - k * 0.8f) + (k == 0 ? 0.16f * rise : 0f);
-                        float x = MathF.Cos(th) * r, y = cy + MathF.Sin(th) * r * 0.85f;
-                        if (k == 0)
-                        {
-                            float sz = 0.27f * (1f + 0.3f * rise);
-                            o.Add(new Spr(M2, x, y, sz, sz * 1.3f, th * 180f / MathF.PI, e));
-                        }
-                        else
-                        {
-                            float sz = 0.20f - k * 0.010f;
-                            o.Add(new Spr(M1, x, y, sz, sz, 0, e));
-                        }
-                    }
-                }
+            case GemArt.Corrompida:  // ouroboros: a serpente mordendo a própria cauda, girando em volta da bola
+                if (MegaraMode == 1)
+                    o.Add(new Spr(M3, 0, cy, 2.05f, 2.05f, -t * 12f, e));
                 break;
         }
     }
@@ -382,6 +384,10 @@ internal static class GemArt
                 g.Particle = g.Add(P, Bubble());
                 g.M1 = g.Add(P, SnakeBody());
                 g.M2 = g.Add(64, SnakeHead());
+                g.M3 = g.Add(256, Ouroboros());
+                g.M4 = g.Add(S, Tendril(0.0f, 1f));
+                g.M5 = g.Add(S, Tendril(1.7f, -1f));
+                g.M6 = g.Add(S, Tendril(3.1f, 1f));
                 break;
 
             case Tempestade:
@@ -872,14 +878,146 @@ internal static class GemArt
     /// <summary>Corrompida: gomo do corpo da serpente.</summary>
     static float[] SnakeBody() => Paint(P, (x, y) =>
     {
+        // Gomo de borda suave e cor contínua: sobrepostos, formam um corpo liso (sem "contas").
         float r = Len(x, y);
-        float a = Cover(r - 0.92f, P);
+        float a = Clamp01((0.95f - r) / 0.25f);
         if (a <= 0f) return default;
-        var c = Mix(Rgb(0x2A0848), Rgb(0x9A4AE0), Clamp01(0.5f + 0.5f * (-0.5f * x + 0.8f * y)));
-        float scale = MathF.Abs(MathF.Sin(x * 9f) * MathF.Sin(y * 9f));
-        c = Mix(c, Rgb(0x1A0430), scale * 0.35f);
-        float hl = Clamp01(1f - Len(x + 0.3f, y - 0.35f) / 0.3f);
-        c = Mix(c, (1f, 0.9f, 1f), hl * 0.5f);
+        // Dorso escuro em cima, barriga clara embaixo (y da textura acompanha a curva do corpo).
+        var c = Mix(Rgb(0x8A3ED0), Rgb(0x2A0848), Clamp01(0.5f + 0.6f * y));
+        float scale = Clamp01(MathF.Abs(MathF.Sin(x * 7f + y * 4f)) - 0.6f) * 1.5f;
+        c = Mix(c, Rgb(0x14022A), scale * 0.2f);
+        return (c.r, c.g, c.b, a);
+    });
+
+    /// <summary>Corrompida: ouroboros, serpente em anel mordendo a própria cauda.</summary>
+    static float[] Ouroboros() => Paint(256, (x, y) =>
+    {
+        const float R = 0.80f;
+        float r = Len(x, y), ang = MathF.Atan2(y, x);
+        const float headAng = 1.75f;                       // cabeça um pouco à esquerda do topo
+        // s = quanto do corpo já percorremos a partir da cabeça, no sentido horário.
+        float sAng = headAng - ang; while (sAng < 0f) sAng += MathF.Tau; while (sAng >= MathF.Tau) sAng -= MathF.Tau;
+        float u = sAng / MathF.Tau;                         // 0 cabeça .. 1 ponta da cauda
+        float width = 0.095f - 0.065f * u;
+        float body = u > 0.035f && u < 0.985f ? MathF.Abs(r - R) - width : 9f;   // a cauda entra na boca
+        // Cabeça: losango arredondado tangente ao anel, mordendo a cauda.
+        float hx = MathF.Cos(headAng) * R, hy = MathF.Sin(headAng) * R;
+        // Eixo da cabeça: aponta no sentido anti-horário (para a cauda); qy = para fora do anel.
+        float tx = -MathF.Sin(headAng), ty = MathF.Cos(headAng);
+        float qx = (x - hx) * tx + (y - hy) * ty, qy = (x - hx) * MathF.Cos(headAng) + (y - hy) * MathF.Sin(headAng);
+        qx += 0.06f;   // recua a cabeça para a boca ficar sobre a ponta da cauda
+        float head = SMin(Len(qx / 1.5f, qy) * 1.0f - 0.10f, Poly(qx, qy, 0.0f, -0.10f, 0.0f, 0.10f, 0.24f, 0f), 0.04f);
+        float d = MathF.Min(body, head);
+        float a = Cover(d, 256);
+        if (a <= 0f) return default;
+        (float r, float g, float b) c;
+        if (head <= body)
+        {
+            c = Mix(Rgb(0x2A0848), Rgb(0xA050F0), Clamp01(0.5f + qy * 3f));
+            float eye = Len(qx - 0.06f, qy - 0.045f) - 0.026f;
+            if (eye < 0f) c = MathF.Abs(qx - 0.06f) < 0.007f ? (0.02f, 0f, 0.03f) : Rgb(0x9CFF4A);
+        }
+        else
+        {
+            // Escamas em losango, dorso escuro (fora) e barriga clara (dentro do anel).
+            float across = (r - R) / Math.Max(width, 0.01f);           // -1 dentro .. 1 fora
+            c = Mix(Rgb(0xC890FF), Rgb(0x3A0E66), Clamp01(0.5f + across * 0.6f));
+            float sc = MathF.Abs(MathF.Sin(sAng * 46f + across * 1.5f)) * MathF.Abs(MathF.Sin(sAng * 46f - across * 1.5f));
+            c = Mix(c, Rgb(0x1A0430), Clamp01(sc * 1.2f - 0.4f) * 0.6f);
+            float hl = Clamp01(1f - MathF.Abs(across + 0.35f) / 0.25f) * 0.35f;
+            c = Mix(c, (1f, 0.9f, 1f), hl);
+        }
+        float rim = Clamp01(1f - MathF.Abs(d + 0.006f) / 0.01f);
+        c = Mix(c, Rgb(0x0E0218), rim * 0.85f);
+        return (c.r, c.g, c.b, a);
+    });
+
+    /// <summary>
+    /// Corrompida: um tendril de simbionte (base embaixo, ponta afiada em cima), escuro e brilhante
+    /// como algo molhado, com luz roxa na borda e um filete de brilho ao longo do corpo.
+    /// </summary>
+    static float[] Tendril(float phase, float bend) => Paint(S, (x, y) =>
+    {
+        // Linha central curva: começa reta na base e serpenteia cada vez mais até a ponta.
+        float u = Clamp01((y + 0.95f) / 1.9f);
+        float cx = bend * 0.62f * MathF.Sin(u * 4.2f + phase) * MathF.Pow(u, 0.8f);
+        float width = 0.40f * MathF.Pow(1f - u, 0.9f) + 0.012f;   // grosso na base, agulha na ponta
+        float off = (x - cx) / Math.Max(width, 0.001f);             // -1..1 através do corpo
+        float d = (MathF.Abs(x - cx) - width) * 0.5f;               // a peça é desenhada estreita: corrige a borda
+        if (y < -0.95f || y > 0.97f) d = Math.Max(d, 0.02f);
+        float a = Cover(d, S) * Clamp01((y + 0.98f) / 0.08f);       // base some suave atrás da bola
+        if (a <= 0f) return default;
+        // Corpo quase preto-arroxeado; luz roxa na borda de um lado; filete brilhante "molhado".
+        var c = Rgb(0x12031F);
+        c = Mix(c, Rgb(0x7A30C8), Clamp01((off - 0.35f) / 0.6f) * 0.9f);
+        c = Mix(c, Rgb(0x3A0C66), Clamp01((-off - 0.6f) / 0.4f) * 0.6f);
+        float streak = Clamp01(1f - MathF.Abs(off + 0.25f) / 0.12f) * (0.4f + 0.6f * MathF.Abs(MathF.Sin(u * 9f + phase)));
+        c = Mix(c, Rgb(0xF0DCFF), streak * 0.75f);
+        return (c.r, c.g, c.b, a);
+    });
+
+    /// <summary>Corrompida: tentáculos de corrupção líquida saindo da bola, com gota na ponta.</summary>
+    static float[] Tendrils(float seed) => Paint(S, (x, y) =>
+    {
+        float d = 9f, along = 0f;
+        for (int k = 0; k < 7; k++)
+        {
+            float a0 = MathF.PI / 2f + (k - 3) * 0.55f;          // leque, sem a parte de baixo
+            float wav = 0.35f + 0.15f * GemStyle.Hash(k * 7 + (int)seed);
+            for (int i = 0; i < 48; i++)
+            {
+                float u = i / 47f;
+                float rr = 0.42f + u * (0.42f + 0.10f * GemStyle.Hash(k * 3 + 1));
+                float aa = a0 + MathF.Sin(u * 5f + seed + k) * wav * u;
+                float px = MathF.Cos(aa) * rr, py = MathF.Sin(aa) * rr;
+                float dd = Len(x - px, y - py) - (0.070f - 0.050f * u);
+                if (dd < d) { d = dd; along = u; }
+                if (i == 47) { float drop = Len(x - px, y - py) - 0.045f; if (drop < d) { d = drop; along = 1f; } }
+            }
+        }
+        float a = Cover(d, S);
+        if (a <= 0f) return default;
+        var c = Mix(Rgb(0x2A0848), Rgb(0x8A3ED0), Clamp01(0.4f + along * 0.6f));
+        float hl = Clamp01(1f - MathF.Abs(d + 0.022f) / 0.015f) * 0.6f;
+        c = Mix(c, Rgb(0xE6C8FF), hl);
+        return (c.r, c.g, c.b, a * 0.95f);
+    });
+
+    /// <summary>Corrompida: serpente erguida em "S" com cabeça de víbora (aponta para cima).</summary>
+    static float[] SnakeRise() => Paint(S, (x, y) =>
+    {
+        // Curva de Bézier do corpo, afinando da base até o pescoço.
+        float body = 9f, along = 0f;
+        float px = x / 0.75f;   // a textura é desenhada um pouco mais estreita que alta
+        for (int i = 0; i < 48; i++)
+        {
+            float u = i / 47f, v = 1f - u;
+            float bx = 3 * v * v * u * 0.45f + 3 * v * u * u * -0.45f;
+            float by = v * v * v * -0.95f + 3 * v * v * u * -0.35f + 3 * v * u * u * 0.20f + u * u * u * 0.52f;
+            float d = Len(px - bx, y - by) - (0.22f - 0.09f * u);
+            if (d < body) { body = d; along = u; }
+        }
+        // Cabeça de víbora no alto.
+        float head = SMin(Len(px, (y - 0.64f) / 1.1f) - 0.22f, Poly(px, y, -0.17f, 0.70f, 0.17f, 0.70f, 0f, 0.97f), 0.07f);
+        float d0 = MathF.Min(body, head);
+        float a = Cover(d0 * 0.55f, S);
+        if (a <= 0f) return default;
+        (float r, float g, float b) c;
+        if (head <= body)
+        {
+            c = Mix(Rgb(0x2A0848), Rgb(0xA050F0), Clamp01(0.4f + (y - 0.6f) * 2f));
+            float eye = Len(MathF.Abs(px) - 0.10f, y - 0.70f) - 0.06f;
+            if (eye < 0f) c = MathF.Abs(MathF.Abs(px) - 0.10f) < 0.015f ? (0.02f, 0f, 0.03f) : Rgb(0x9CFF4A);
+        }
+        else
+        {
+            // Dorso com losangos escuros e borda clara (barriga) de um lado.
+            c = Mix(Rgb(0x3A0E66), Rgb(0x9A4AE0), Clamp01(0.5f - body * 4f));
+            float diamond = MathF.Abs(MathF.Sin(along * 40f)) * Clamp01(-body / 0.05f);
+            c = Mix(c, Rgb(0x16031F), Clamp01(diamond - 0.55f) * 1.6f);
+        }
+        float rim = Clamp01(1f - MathF.Abs(d0 + 0.012f) / 0.02f);
+        c = Mix(c, Rgb(0x0E0218), rim * 0.8f);
         return (c.r, c.g, c.b, a);
     });
 

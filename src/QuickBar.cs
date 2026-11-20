@@ -76,7 +76,7 @@ internal sealed class BarLogic
         public Image? ProgressImg;
     }
 
-    const int PoolSize = 64;
+    const int PoolSize = 80;
     const float FlashTime = 1.2f;
 
     readonly Usage _usage = new();
