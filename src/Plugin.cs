@@ -10,7 +10,7 @@ public class Plugin : BasePlugin
 {
     public const string Guid = "sangria.correnterapida";
     public const string Name = "CorrenteRapida";
-    public const string Version = "2.5.0";
+    public const string Version = "2.5.1";
 
     internal static ManualLogSource L = null!;
     internal static Settings S = null!;
@@ -44,6 +44,8 @@ internal sealed class Settings
     public readonly ConfigEntry<float> OffsetY;
     public readonly ConfigEntry<float> ButtonSize;
     public readonly ConfigEntry<float> Spacing;
+    public readonly ConfigEntry<bool> AutoSpacing;
+    public readonly ConfigEntry<float> ActiveFps, IdleFps;
     public readonly ConfigEntry<bool> UseCardArt;
     public readonly ConfigEntry<bool> HidePanelDuringSwitch;
     public readonly ConfigEntry<bool> DumpPanel;
@@ -67,7 +69,10 @@ internal sealed class Settings
         OffsetX = f.Bind("Posicao", "DeslocamentoX", 8f, "Distância horizontal da barra em relação ao botão original.");
         OffsetY = f.Bind("Posicao", "DeslocamentoY", 42f, "Distância vertical da barra em relação ao botão original.");
         ButtonSize = f.Bind("Posicao", "TamanhoBotao", 44f, "Tamanho de cada botão.");
-        Spacing = f.Bind("Posicao", "Espacamento", 14f, "Espaço entre os botões.");
+        Spacing = f.Bind("Posicao", "Espacamento", 14f, "Espaço mínimo entre os botões.");
+        ActiveFps = f.Bind("Desempenho", "QuadrosJoiaAtiva", 40f, "Quadros por segundo da animação da joia ativa (0 = sem limite).");
+        IdleFps = f.Bind("Desempenho", "QuadrosJoiasEncaixadas", 15f, "Quadros por segundo das joias encaixadas (0 = sem limite).");
+        AutoSpacing = f.Bind("Posicao", "EspacoAutomatico", true, "Aumenta o espaço entre os botões o suficiente para a aura de uma joia não ficar em cima da vizinha.");
         UseCardArt = f.Bind("Visual", "UsarArteDasCartas", true, "Usa um recorte da arte de cada Corrente como ícone (depois que a janela for aberta uma vez).");
         HidePanelDuringSwitch = f.Bind("Visual", "EsconderJanelaNaTroca", true, "Deixa a janela invisível enquanto o mod troca a Corrente.");
         DirectSwitch = f.Bind("Geral", "TrocaDireta", true,

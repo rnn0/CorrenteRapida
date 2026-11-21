@@ -13,16 +13,18 @@ Mod de cliente (BepInEx) para o servidor **Sangria Falls** de V Rising. Adiciona
 - **Detecta trocas manuais** feitas pela janela original.
 - **Pré-carregamento invisível**: ao entrar no servidor, o mod abre e fecha a janela sem que ela apareça, para já conhecer os botões.
 - **Prévia do Lendário**: segure **Alt** com o mouse sobre uma bola para vê-la no nível máximo, com uma legenda do tempo de uso.
-- **Joias de cristal lapidado**: cada Corrente é uma bola com uma joia em facetas, com um brilho que atravessa o cristal em loop e cintilações nas pontas. Quando ativa, a joia se solta, deixando um encaixe iluminado e rachado na cor do elemento, e surge a aura.
+- **Joias vivas**: cada Corrente tem uma joia animada com ritmo próprio. Quando ativa, a joia se solta do encaixe e surge a aura do elemento.
+- **Leve**: cada joia é desenhada a partir de um único atlas, num Canvas próprio, com limite de quadros (a ativa a 40 fps, as encaixadas a 15 fps).
+- **Espaço automático**: a barra abre o espaço necessário para a aura de uma joia nunca ficar em cima da vizinha.
 
-| Corrente | Joia | Aura |
-|---|---|---|
-| Glacial | estrela de gelo escuro | halo gelado, cristais e lascas de gelo girando |
-| Caos | caveira | fogo roxo e brasas |
-| Tempestade | raio amarelo | arcos elétricos |
-| Corrompida | olho com pupila em fenda | corrupção líquida e bolhas |
-| Luminosa | sol | halo pulsante e raios de luz |
-| Sanguínea | gota de sangue | névoa de sangue e gotas pingando |
+| Corrente | Joia | Ritmo e aura | Lendária |
+|---|---|---|---|
+| Glacial | vulto de um vampiro dormindo num bloco de gelo | coração congelado batendo devagar, ondas de geada e névoa de túmulo | asas de morcego de gelo e mandíbula de presas |
+| Caos | bola de energia oscilante com runas em órbita, presa por correntes de magia | escapa, as correntes grudam de volta; fogo roxo e fendas no espaço | o selo se rompe: círculo mágico e runas se abrem quando ela escapa |
+| Tempestade | raio de cristal dourado sobre um globo de plasma | carga e descarga: relâmpago cai na joia | bobinas com anéis alimentando o globo |
+| Corrompida | olho de serpente vivo | respiração lenta, miasma venenoso, tentáculos segurando o olho | tentáculos pingando veneno e olhos na escuridão |
+| Luminosa | sol perolado com luz prismática | halo, feixes de arco-íris | coroa, mandala e esferas de luz |
+| Sanguínea | gota de rubi com sangue líquido, acorrentada | batimento de coração; a gota tenta fugir das correntes | gola de vampiro, chifres, morcegos e olhos na escuridão |
 
 ## Evolução por tempo de uso
 
@@ -39,7 +41,7 @@ Cada Corrente evolui conforme o tempo que você passa com ela ativa (pausa após
 | Radiante | 20 h | luz interna pulsando e fragmentos orbitando |
 | Lendária | 50 h | segunda camada de aura e um traço temático na aura |
 
-<p align="center"><img src="docs/niveis.png" alt="Os quatro níveis de cada Corrente"></p>
+<p align="center"><img src="docs/niveis.png" alt="Os oito níveis de cada Corrente"></p>
 
 Um anel fino em volta de cada bola mostra o progresso até o próximo nível. O tempo fica salvo só no seu PC, em `BepInEx/config/CorrenteRapida_tempo.txt`.
 
@@ -72,6 +74,8 @@ Arquivo `BepInEx/config/sangria.correnterapida.cfg` (criado na primeira execuç�
 | `BotaoDireito` | `true` | permite trocar com o botão direito |
 | `DeslocamentoX` / `DeslocamentoY` | `8` / `42` | posição da barra em relação ao botão original |
 | `TamanhoBotao` | `44` | tamanho de cada bola |
+| `EspacoAutomatico` | `true` | abre espaço para as auras não se sobreporem (`false` usa só o `Espacamento`) |
+| `QuadrosJoiaAtiva` / `QuadrosJoiasEncaixadas` | `40` / `15` | limite de quadros das animações (`0` = sem limite) |
 | `ForcarNivel` | `-1` | `0`–`7` força um nível para ver o visual (`-1` = tempo real) |
 | `HorasNiveis` | `1,2,3,4,5,20,50` | horas para cada um dos 7 níveis |
 | `MostrarProgresso` | `true` | anel de progresso em volta das bolas |

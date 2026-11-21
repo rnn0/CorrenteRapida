@@ -62,7 +62,8 @@ internal sealed class BarLogic
     sealed class GemIcon
     {
         public GemStyle Style = null!;
-        public Texture2D[] Tex = null!;
+        public Texture2D Atlas = null!;
+        public Rect[] Uv = null!, Px = null!;
         public RawImage[] Pool = null!;
         public RectTransform[] Rts = null!;
         public int[] CurTex = null!;
@@ -74,9 +75,11 @@ internal sealed class BarLogic
         public int LastLevel = -1;
         public float FlashUntil;
         public Image? ProgressImg;
+        public Spr[] Last = null!;          // últimos valores aplicados (só mexe no que mudou)
+        public float NextDraw, LastDim = -1f;
     }
 
-    const int PoolSize = 80;
+    const int PoolSize = 112;
     const float FlashTime = 1.2f;
 
     readonly Usage _usage = new();
@@ -176,9 +179,12 @@ internal sealed class BarLogic
         bool wasOpen = _panelOpen;
         _panelOpen = Alive(_root) && _root!.gameObject.activeInHierarchy;
 
-        if (!_panelOpen && (now >= _nextScan || _state == St.Opening || _warmStage == 1))
+        // Procurar a janela varre todos os textos da interface (pesado): só quando ainda não a
+        // conhecemos, e no máximo a cada 2 s, a não ser que estejamos abrindo ela.
+        bool urgent = _state == St.Opening || _warmStage == 1;
+        if (!_panelOpen && (urgent || (now >= _nextScan && !Alive(_root))))
         {
-            _nextScan = now + 0.4f;
+            _nextScan = now + 2f;
             if (ScanForPanel()) _panelOpen = true;
         }
 
@@ -284,26 +290,54 @@ internal sealed class BarLogic
             case 1:
                 if (_panelOpen)
                 {
+                    // Esconde a própria janela também (caso a camada não esconda tudo).
+                    if (Alive(_root))
+                    {
+                        _warmRootCg = _root!.GetComponent<CanvasGroup>() ?? _root.gameObject.AddComponent<CanvasGroup>();
+                        _warmRootAlpha = _warmRootCg.alpha;
+                        _warmRootCg.alpha = 0f;
+                    }
                     ReadCards();
-                    if (_closeBtn != null && Alive(_closeBtn)) Click(_closeBtn);
-                    else Click(_opener!);
+                    CloseForWarm();
                     _warmStage = 2;
-                    _warmFrames = 3;
+                    _warmDeadline = now + 1.5f;
+                    _warmRetry = false;
                 }
                 else if (now > _warmDeadline) FinishWarm("a janela não abriu a tempo");
                 break;
             case 2:
-                if (--_warmFrames > 0) return;
-                if (_panelOpen && OpenerVisible) Click(_opener!);
+            {
+                // Só termina quando a janela realmente fechou (antes reabria sem querer se o fechamento demorasse).
+                if (_panelOpen && now < _warmDeadline) return;
+                if (_panelOpen && !_warmRetry)
+                {
+                    _warmRetry = true;
+                    _warmDeadline = now + 1.5f;
+                    CloseForWarm();
+                    return;
+                }
                 int known = 0;
                 foreach (var c in _cards) if (c?.ClickTarget != null && Alive(c.ClickTarget)) known++;
-                FinishWarm(null, known);
+                FinishWarm(_panelOpen ? "a janela não fechou" : null, known);
                 break;
+            }
         }
+    }
+
+    CanvasGroup? _warmRootCg;
+    float _warmRootAlpha = 1f;
+    bool _warmRetry;
+
+    void CloseForWarm()
+    {
+        if (_closeBtn != null && Alive(_closeBtn)) Click(_closeBtn);
+        else if (_opener != null && Alive(_opener)) Click(_opener);
     }
 
     void FinishWarm(string? error, int known = 0)
     {
+        if (_warmRootCg != null && Alive(_warmRootCg)) _warmRootCg.alpha = _warmRootAlpha;
+        _warmRootCg = null;
         if (_warmCg != null && Alive(_warmCg)) _warmCg.alpha = _warmAlpha;
         _warmCg = null;
         _warmStage = 0;
@@ -846,21 +880,21 @@ internal sealed class BarLogic
     void BuildGem(SlotUI s, int i, GemStyle style)
     {
         var g = new GemIcon { Style = style };
-        g.Tex = new Texture2D[style.Tex.Count];
-        for (int k = 0; k < g.Tex.Length; k++) g.Tex[k] = MakeTex(style.Tex[k], style.Size[k]);
+        // Todas as texturas da joia num atlas só: a placa de vídeo desenha as camadas em lote.
+        g.Atlas = MakeAtlas(style, out g.Uv, out g.Px);
         g.Pool = new RawImage[PoolSize];
         g.Rts = new RectTransform[PoolSize];
         g.CurTex = new int[PoolSize];
         g.On = new bool[PoolSize];
+        g.Last = new Spr[PoolSize];
 
         // Anel de progresso: Image "preenchida" em círculo, desenhada atrás de tudo.
         var pgo = NewRect("Progresso", s.Go.transform);
         var prt = pgo.GetComponent<RectTransform>();
         prt.anchorMin = prt.anchorMax = new Vector2(0.5f, 0.5f);
         prt.pivot = new Vector2(0.5f, 0.5f);
-        var ptex = g.Tex[style.Progress];
         var pimg = pgo.AddComponent<Image>();
-        pimg.sprite = Sprite.Create(ptex, new Rect(0, 0, ptex.width, ptex.height), new Vector2(0.5f, 0.5f));
+        pimg.sprite = Sprite.Create(g.Atlas, g.Px[style.Progress], new Vector2(0.5f, 0.5f));
         pimg.type = Image.Type.Filled;
         pimg.fillMethod = Image.FillMethod.Radial360;
         pimg.fillOrigin = (int)Image.Origin360.Top;
@@ -868,14 +902,23 @@ internal sealed class BarLogic
         pimg.raycastTarget = false;
         g.ProgressImg = pimg;
 
+        // As camadas ficam num Canvas próprio: quando a arte anima, só esse pedaço é refeito,
+        // não a interface inteira.
+        var holder = NewRect("Arte", s.Go.transform);
+        var hrt = holder.GetComponent<RectTransform>();
+        hrt.anchorMin = hrt.anchorMax = new Vector2(0.5f, 0.5f);
+        hrt.pivot = new Vector2(0.5f, 0.5f);
+        hrt.sizeDelta = Vector2.zero;
+        holder.AddComponent<Canvas>();
         for (int k = 0; k < PoolSize; k++)
         {
-            var go = NewRect("Camada" + k, s.Go.transform);
+            var go = NewRect("Camada" + k, holder.transform);
             var rt = go.GetComponent<RectTransform>();
             rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
             rt.pivot = new Vector2(0.5f, 0.5f);
             var img = go.AddComponent<RawImage>();
             img.raycastTarget = false;
+            img.texture = g.Atlas;
             img.enabled = false;
             g.Pool[k] = img;
             g.Rts[k] = rt;
@@ -887,6 +930,52 @@ internal sealed class BarLogic
         s.Art.enabled = false;
         s.Label.enabled = false;
         s.Gem = g;
+    }
+
+    /// <summary>
+    /// Empacota as texturas de uma joia num atlas (prateleiras, com margem para os mipmaps não vazarem).
+    /// </summary>
+    static Texture2D MakeAtlas(GemStyle style, out Rect[] uv, out Rect[] pxRect)
+    {
+        const int pad = 8, width = 2048;
+        int n = style.Tex.Count;
+        var order = new int[n];
+        for (int i = 0; i < n; i++) order[i] = i;
+        Array.Sort(order, (a, b) => style.Size[b].CompareTo(style.Size[a]));
+        var pos = new (int x, int y)[n];
+        int cx = pad, cy = pad, shelf = 0;
+        foreach (int i in order)
+        {
+            int sz = style.Size[i];
+            if (cx + sz + pad > width) { cx = pad; cy += shelf + pad; shelf = 0; }
+            pos[i] = (cx, cy);
+            cx += sz + pad;
+            shelf = Math.Max(shelf, sz);
+        }
+        int h = (cy + shelf + pad + 7) / 8 * 8;
+        var cols = new Color32[width * h];
+        static byte B(float v) => (byte)Math.Clamp((int)(v * 255f + 0.5f), 0, 255);
+        uv = new Rect[n]; pxRect = new Rect[n];
+        for (int i = 0; i < n; i++)
+        {
+            int sz = style.Size[i]; var px = style.Tex[i];
+            var (ox, oy) = pos[i];
+            for (int y = 0; y < sz; y++)
+                for (int x = 0; x < sz; x++)
+                {
+                    int s0 = (y * sz + x) * 4;
+                    cols[(oy + y) * width + ox + x] = new Color32(B(px[s0]), B(px[s0 + 1]), B(px[s0 + 2]), B(px[s0 + 3]));
+                }
+            uv[i] = new Rect(ox / (float)width, oy / (float)h, sz / (float)width, sz / (float)h);
+            pxRect[i] = new Rect(ox, oy, sz, sz);
+        }
+        var tex = new Texture2D(width, h, TextureFormat.RGBA32, 4, false);
+        tex.filterMode = FilterMode.Trilinear;
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.hideFlags = HideFlags.HideAndDontSave;
+        tex.SetPixels32(cols);
+        tex.Apply(true, true);
+        return tex;
     }
 
     static Texture2D MakeTex(float[] px, int n)
@@ -952,23 +1041,41 @@ internal sealed class BarLogic
         g.Settled = e <= 0f && level < GemStyle.Radiante && flash <= 0f && !g.Style.AlwaysAnimate; // Radiante+ e cristais com brilho se mexem sempre
         g.LastStatus = st;
 
+        // Limite de quadros: a joia ativa (ou em transição) anima a ~40 fps, as encaixadas a ~15 fps.
+        bool busy = e > 0f || flash > 0f || preview || g.T != target;
+        float fps = busy ? Plugin.S.ActiveFps.Value : Plugin.S.IdleFps.Value;
+        if (fps > 0f)
+        {
+            if (now < g.NextDraw && g.LastStatus == st) return;
+            g.NextDraw = now + 1f / fps;
+        }
+
         g.Style.Frame(e, now, level, flash, g.Buf);
         float inner = Plugin.S.ButtonSize.Value - 4f;
         float dim = st == Status.Locked ? 0.35f : 1f;
-        int k = 0;
-        for (; k < g.Buf.Count && k < PoolSize; k++)
+        if (dim != g.LastDim) { g.LastDim = dim; for (int q = 0; q < PoolSize; q++) g.Last[q].Tex = -1; }
+        int k = 0, used = 0;
+        for (; k < g.Buf.Count && used < PoolSize; k++)
         {
             var sp = g.Buf[k];
-            var img = g.Pool[k];
-            var rt = g.Rts[k];
-            if (!g.On[k]) { img.enabled = true; g.On[k] = true; }
-            if (g.CurTex[k] != sp.Tex) { img.texture = g.Tex[sp.Tex]; g.CurTex[k] = sp.Tex; }
-            rt.anchoredPosition = new Vector2(sp.X * inner, sp.Y * inner);
-            rt.sizeDelta = new Vector2(sp.W * inner, sp.H * inner);
-            rt.localRotation = Quaternion.Euler(0f, 0f, sp.Rot);
-            img.color = new Color(dim, dim, dim, sp.A);
+            if (sp.A < 0.01f) continue;                       // invisível: nem ocupa camada
+            int u = used++;
+            var img = g.Pool[u];
+            var rt = g.Rts[u];
+            ref var last = ref g.Last[u];
+            if (!g.On[u]) { img.enabled = true; g.On[u] = true; last.Tex = -1; }
+            if (g.CurTex[u] != sp.Tex) { img.uvRect = g.Uv[sp.Tex]; g.CurTex[u] = sp.Tex; }
+            if (MathF.Abs(last.X - sp.X) > 0.002f || MathF.Abs(last.Y - sp.Y) > 0.002f || last.Tex < 0)
+                rt.anchoredPosition = new Vector2(sp.X * inner, sp.Y * inner);
+            if (MathF.Abs(last.W - sp.W) > 0.002f || MathF.Abs(last.H - sp.H) > 0.002f || last.Tex < 0)
+                rt.sizeDelta = new Vector2(sp.W * inner, sp.H * inner);
+            if (MathF.Abs(last.Rot - sp.Rot) > 0.2f || last.Tex < 0)
+                rt.localRotation = Quaternion.Euler(0f, 0f, sp.Rot);
+            if (MathF.Abs(last.A - sp.A) > 0.01f || last.Tex < 0)
+                img.color = new Color(dim, dim, dim, sp.A);
+            last = sp; last.Tex = sp.Tex;
         }
-        for (; k < PoolSize; k++)
+        for (k = used; k < PoolSize; k++)
             if (g.On[k]) { g.Pool[k].enabled = false; g.On[k] = false; }
     }
 
@@ -1066,14 +1173,36 @@ internal sealed class BarLogic
         else txt = $"{nome} — {LevelNames[lv]} — {_usage.Hours(idx):0.0} h / {_usage.NextHours(idx):0} h até {LevelNames[lv + 1]}";
         _legend.text = txt;
 
-        float size = Plugin.S.ButtonSize.Value, gap = Plugin.S.Spacing.Value;
+        float size = Plugin.S.ButtonSize.Value, gap = Gap;
         _legend.rectTransform.anchoredPosition = new Vector2(idx * (size + gap) + size / 2f, -size / 2f - 4f);
         _legend.transform.SetAsLastSibling();
     }
 
+    /// <summary>
+    /// Espaço entre os botões: o configurado ou, no automático, o necessário para a aura mais larga
+    /// (Lendária ativa) não encostar na joia vizinha encaixada.
+    /// </summary>
+    static float Gap
+    {
+        get
+        {
+            float size = Plugin.S.ButtonSize.Value, gap = Plugin.S.Spacing.Value;
+            var st = _styles;
+            if (!Plugin.S.AutoSpacing.Value || st == null) return gap;
+            float inner = size - 4f, need = 0f;
+            for (int i = 0; i < N; i++)
+                for (int j = 0; j < N; j++)
+                    if (i != j) need = MathF.Max(need, st[i].ExtActive + st[j].ExtIdle);
+            return MathF.Max(gap, inner * need - size + 2f);
+        }
+    }
+
+    bool _laidOutWithStyles;
+
     void LayoutSlots()
     {
-        float size = Plugin.S.ButtonSize.Value, gap = Plugin.S.Spacing.Value;
+        _laidOutWithStyles = _styles != null;
+        float size = Plugin.S.ButtonSize.Value, gap = Gap;
         _bar!.sizeDelta = new Vector2(N * size + (N - 1) * gap, size);
         for (int i = 0; i < N; i++)
         {
@@ -1115,6 +1244,7 @@ internal sealed class BarLogic
                 s.Label.SetAllDirty();
             }
 
+            if (!_laidOutWithStyles && _styles != null) LayoutSlots();
             if (s.Gem == null && _styles != null) BuildGem(s, i, _styles[i]);
             if (s.Gem != null)
             {
