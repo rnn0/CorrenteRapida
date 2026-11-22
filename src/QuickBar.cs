@@ -1117,7 +1117,7 @@ internal sealed class BarLogic
         if (msg != null && msg != _noticeShown && _font != null && _bar != null)
         {
             _noticeShown = msg;
-            _noticeUntil = now + 25f;
+            _noticeUntil = now + (Updater.CanInstall ? 120f : 25f);   // o convite para instalar fica mais tempo
             if (_notice == null)
             {
                 var go = NewRect("Aviso", _bar.transform);
@@ -1128,7 +1128,13 @@ internal sealed class BarLogic
                 _notice = go.AddComponent<TextMeshProUGUI>();
                 _notice.fontSize = 13;
                 _notice.enableWordWrapping = false;
-                _notice.raycastTarget = false;
+                _notice.raycastTarget = true;
+                var nb = go.AddComponent<Button>();
+                nb.transition = Selectable.Transition.None;
+                nb.onClick.AddListener(DelegateSupport.ConvertDelegate<UnityAction>(new Action(() =>
+                {
+                    if (Updater.CanInstall) Updater.InstallPending();
+                })));
                 _notice.color = new Color(1f, 0.85f, 0.45f, 1f);
                 _notice.outlineWidth = 0.2f;
             }

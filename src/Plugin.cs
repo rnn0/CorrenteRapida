@@ -10,7 +10,7 @@ public class Plugin : BasePlugin
 {
     public const string Guid = "sangria.correnterapida";
     public const string Name = "CorrenteRapida";
-    public const string Version = "2.5.1";
+    public const string Version = "2.5.2";
 
     internal static ManualLogSource L = null!;
     internal static Settings S = null!;
@@ -102,10 +102,17 @@ internal sealed class Settings
             f.Save();
         }
         AfkMinutes = f.Bind("Evolucao", "MinutosAfk", 5f, "Depois de tantos minutos sem mexer o mouse nem apertar teclas, o tempo para de contar.");
-        UpdateMode = f.Bind("Atualizacao", "Modo", "Avisar",
+        UpdateMode = f.Bind("Atualizacao", "Modo", "Automatico",
             new ConfigDescription("Automatico: baixa a versão nova do GitHub (conferindo o SHA-256) e aplica na próxima vez que o jogo abrir. " +
-                "Avisar: só avisa que há versão nova. Desligado: não consulta nada.",
+                "Avisar: avisa que há versão nova (clique no aviso para instalar). Desligado: não consulta nada.",
                 new AcceptableValueList<string>("Automatico", "Avisar", "Desligado")));
+        // 2.5.2: a atualização automática passa a ser o padrão (quem estava no padrão antigo "Avisar" muda junto).
+        if (cfgVersion.Value < 4)
+        {
+            if (UpdateMode.Value == "Avisar") UpdateMode.Value = "Automatico";
+            cfgVersion.Value = 4;
+            f.Save();
+        }
         Preload = f.Bind("Geral", "PreCarregarJanela", true,
             "Ao entrar no servidor, abre e fecha a janela de Correntes de forma invisível para aprender os botões (evita a janela aparecer na primeira troca).");
         PanelLayerPath = f.Bind("Geral", "CaminhoCamadaJanela", "",

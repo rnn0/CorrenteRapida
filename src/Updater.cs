@@ -20,6 +20,12 @@ internal static class Updater
     /// <summary>Mensagem para mostrar no jogo (lida pela barra na thread principal).</summary>
     public static volatile string? Notice;
 
+    /// <summary>Há uma versão nova esperando o clique no aviso (modo Avisar).</summary>
+    public static volatile bool CanInstall;
+    static string? _dllUrl, _shaUrl;
+    static Version? _latest;
+    static int _installing;
+
     public static void Start()
     {
         CleanupOld();
@@ -64,13 +70,48 @@ internal static class Updater
             else if (name == Asset + ".sha256") shaUrl = url;
         }
 
-        if (!auto || dllUrl == null || shaUrl == null)
+        if (dllUrl == null || shaUrl == null)
         {
             Notice = $"CorrenteRapida {latest} disponível no GitHub";
             Plugin.L.LogInfo($"[CorrenteRapida] Nova versão {latest} disponível: https://github.com/{Repo}/releases/latest");
             return;
         }
+        _dllUrl = dllUrl; _shaUrl = shaUrl; _latest = latest;
+        if (!auto)
+        {
+            CanInstall = true;
+            Notice = $"CorrenteRapida {latest} disponível — clique aqui para instalar";
+            Plugin.L.LogInfo($"[CorrenteRapida] Nova versão {latest} disponível (clique no aviso embaixo da barra para instalar).");
+            return;
+        }
+        await Install(http);
+    }
 
+    /// <summary>Chamado pelo clique no aviso: baixa e instala a versão encontrada.</summary>
+    public static void InstallPending()
+    {
+        if (!CanInstall || System.Threading.Interlocked.Exchange(ref _installing, 1) == 1) return;
+        CanInstall = false;
+        Notice = $"Baixando CorrenteRapida {_latest}…";
+        Task.Run(async () =>
+        {
+            try
+            {
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+                http.DefaultRequestHeaders.UserAgent.ParseAdd($"CorrenteRapida/{Plugin.Version}");
+                await Install(http);
+            }
+            catch (Exception e)
+            {
+                Notice = $"Não consegui baixar a CorrenteRapida {_latest}";
+                Plugin.L.LogWarning($"[CorrenteRapida] Download da atualização falhou: {e.Message}");
+            }
+        });
+    }
+
+    static async Task Install(HttpClient http)
+    {
+        string dllUrl = _dllUrl!, shaUrl = _shaUrl!; var latest = _latest;
         // Baixa e confere a integridade antes de tocar em qualquer arquivo.
         var bytes = await http.GetByteArrayAsync(dllUrl);
         var expected = (await http.GetStringAsync(shaUrl)).Trim().Split(' ', '\t', '\n')[0].ToLowerInvariant();
