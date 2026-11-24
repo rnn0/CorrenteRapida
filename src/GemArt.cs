@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 
+using V3 = System.Numerics.Vector3;
+
 namespace CorrenteRapida;
 
 /// <summary>Uma camada a desenhar. Unidades = tamanho interno do botão; (0,0) = centro, y para cima.</summary>
@@ -31,6 +33,8 @@ internal sealed class GemStyle
     public int M1 = -1, M2 = -1, M3 = -1, M4 = -1, M5 = -1, M6 = -1, M7 = -1;   // motivos do nível Lendário
     internal static int LuzMode = 6;   // 1 prisma, 2 mandala, 3 esferas, 4 coroa solar, 5 rosácea, 6 fusão (coroa + mandala + esferas)
     internal static int MegaraMode = 2;
+    internal static int LuzKillMode = 0;   // abate da Luz: 0 fios trançados, 1 feixe, 2 cometas, 3 penas de luz, 4 runas sagradas
+    internal static int StormLegend = 5;   // Tempestade Lendária 3D: 0 bobinas, 1 pilares rúnicos, 2 nuvem, 3 cristais, 4 asas de raio, 5 cristais + asas para-raios
     internal static int GeloMode = 6;   // 5 runa vampírica, 6 vampiro dormindo no bloco de gelo   // 0 estrela congela/quebra, 1 coração congelado, 3 tempestade de inverno, 4 prisão de gelo   // 1 ouroboros, 2 tendrils de simbionte
     public int Cracks, EnergyA, EnergyB; // rachaduras e energia no buraco da joia
     public int Veins = -1;               // veios brilhando na superfície da bola
@@ -40,7 +44,9 @@ internal sealed class GemStyle
     public int[] Liquid = Array.Empty<int>();                // sangue líquido dentro da gota (inclinações da superfície)
     public int GlassTop = -1, HotFace = -1, HotEdge = -1, Spark = -1, VeinA = -1, VeinB = -1, Eyes = -1;
     public int Sclera = -1, Iris = -1, Pupil = -1, MiniEye = -1, Venom = -1;  // olho vivo da Corrompida
-    public int[] Lids = Array.Empty<int>();                  // pálpebras de escamas (0 = aberta .. fechada)
+    public int[] Lids = Array.Empty<int>();
+    public int[] EyeFrames = Array.Empty<int>();             // 3D: globo ocular renderizado [pupila][olhar x][olhar y]
+    internal const int EyeNX = 9, EyeNY = 3;                  // pálpebras de escamas (0 = aberta .. fechada)
     public int IceSpike = -1, SnowDot = -1, Flake = -1, FrostCoat = -1, IceGlowA = -1, IceGlowB = -1,
                IceShell = -1, Mist = -1, FrostRing = -1, Glacier = -1, AuroraA = -1, AuroraB = -1;   // Gelo
     public int VampSharp = -1, JawTop = -1, JawBottom = -1;
@@ -59,10 +65,37 @@ internal sealed class GemStyle
         float st = u >= 0.84f ? (u - 0.84f) / 0.16f : -1f;
         return (c * e, e > 0.05f ? st : -1f, cyc);
     }
+    public int[] GemFrames = Array.Empty<int>();
+    public bool OpaqueBall;
+    public int[] BallFrames = Array.Empty<int>(), EyeGoo = Array.Empty<int>(), BallGlow = Array.Empty<int>();
+    public int[] GooStrand = Array.Empty<int>();             // 3D: fio de gosma afinando (0 grosso .. fino)
+    public int GooDrip = -1, Rivulet = -1, RingGoo = -1, VampInner = -1; public int[] CBat = Array.Empty<int>(), CBatBend = Array.Empty<int>(), CBatGlowA = Array.Empty<int>(), CBatGlowB = Array.Empty<int>(); public float[][] CBatPts = Array.Empty<float[]>(); public int Wisp = -1;
+    public int GooBlob = -1;
+    public float KillAge = 99f;
+    public int VbRing = -1, VbRays = -1, VbCore = -1;   // explosão de abate de V Blood
+    public int KillCap = -1, KillStreak = -1, KillStreak2 = -1, LightFeather = -1, HaloRingTex = -1; public int[] HolyFire = Array.Empty<int>(), FireBack = Array.Empty<int>(), FireFront = Array.Empty<int>(), Veil = Array.Empty<int>(); public int FireBloom = -1, FireShard = -1, FireRim = -1; public int[] LightBat = Array.Empty<int>(); public bool KillGrab; public int[] HolyFlame = Array.Empty<int>(), KillRunes = Array.Empty<int>();   // segundos desde que a joia absorveu um abate (definido pela barra)
+    public int BloodVeins = -1, BloodRing = -1, LuzBeam = -1, HaloGem = -1;
+    public int GlobeShell = -1, Tesla3D = -1, Pillar3D = -1, Cloud3D = -1, CloudFlash = -1, OrbitCrystal = -1; public int[] PillarRunes = Array.Empty<int>(), WingL3 = Array.Empty<int>(), WingR3 = Array.Empty<int>();
+    public int GlobeShellUnused = -1; public int[] StormCrack = Array.Empty<int>();
+    public int[] Icicle = Array.Empty<int>(), IceShard = Array.Empty<int>(); public int IceDrop = -1;
+    readonly float[] _prevT = new float[8], _prevE = new float[8], _burstAt = { -99f, -99f, -99f, -99f, -99f, -99f, -99f, -99f };
+    public int[] IceCrack = Array.Empty<int>(); public int IceCore = -1, IceDormant = -1; public float[] IceHit = Array.Empty<float>();   // 3D Gelo: energia e trincas acesas na pedra de gelo
+    internal const int EnEvents = 8, IceHits = 8;   //  (brilho: 12 abertos + 4 deitados): morcego de cristal, de asas fechadas (0) a abertas
+    public int[] TentFrames = Array.Empty<int>();   // [tentáculo*8 + quadro]: ondas de gosma correndo
+    public int[] GooLid = Array.Empty<int>();   // membrana de gosma abrindo sobre o encaixe
+                                     // 3D: pedaço de fio arrebentado pendurado            // 3D: bola animada (gosma escorrendo)
+    public float CollarScale = 1f;
+    public int[] RayFrames = Array.Empty<int>();   // raios do sol girando (estilo 3D)
+    public int ChainAnchor = -1, ShadowDot = -1, Socket = -1, SocketPoolTex = -1;
+    public int[] LinkVariants = Array.Empty<int>();   // elos de lado com torções diferentes                   // olhal 3D onde a corrente se prende                        // bola de pedra/metal: sem efeitos "dentro" dela   // estilo 3D: quadros da pedra lapidada girando
     public int Rift = -1, ChaosCircle = -1, LinkRune = -1;
     int _lv;                       // nível do quadro atual (para as peças que evoluem)
     float _esc;                    // quanto a bola rúnica escapou neste quadro
     public int OrbSwirlA = -1, OrbSwirlB = -1, OrbRune = -1, MLinkFace = -1, MLinkEdge = -1, Plasma = -1;
+    public Func<float, float, float> ChaosStarSd;
+    public int SpikeTex = -1, ChaosCrackNet = -1, ChainPulse = -1, HoleTex = -1; public int[] ArcTex = Array.Empty<int>(), DiskBack = Array.Empty<int>();
+    public float[] SpikeDir = Array.Empty<float>();   // por ponta: dx, dy, dz, comprimento, largura
+    public int[] OrbShell = Array.Empty<int>(), StarFrames = Array.Empty<int>(); public int StarCore = -1;   // 3D Caos: casca de cristal lapidada girando por cima da energia
     public int[] OrbGlyphs = Array.Empty<int>();
     public int FlameInA = -1, FlameInB = -1, ChaosEyes = -1, GarEyes = -1, MouthIn = -1, FireBreath = -1;
 
@@ -195,7 +228,7 @@ internal sealed class GemStyle
         }
         float breath = Kind == GemArt.Corrompida ? Breath(t, e) : 0f;
         if (Kind == GemArt.Corrompida) beat = breath;       // a respiração faz o papel do batimento
-        if (Kind == GemArt.Gelo && GeloMode == 6) beat = FrozenHeart(t, e);
+        if (Kind == GemArt.Gelo && GeloMode == 6) beat = CBat.Length > 0 ? WingBeat(t, e) : FrozenHeart(t, e);
         _esc = 0f;
         var fight = Kind == GemArt.Caos && OrbRune >= 0 ? OrbFight(t, e) : (0f, 0f, -1, 0f, 0f);
         if (Kind == GemArt.Caos && OrbRune >= 0 && e > 0.001f)
@@ -214,12 +247,26 @@ internal sealed class GemStyle
         bool on = e > 0.001f;
 
         if (on && level >= Lendaria) LegendBack(e, t, gx, gy, cy, o);
-        if (on) AuraBack(ea, t, gx, gy, cy, o);
-        if (on && level >= Lendaria && Kind == GemArt.Gelo) GeloLegendMid(e, t, cy, o);
-        if (level >= Lendaria && Kind == GemArt.Gelo && GeloMode == 6) IceWings(e, t, gx, gy, cy, true, o);
-        // Chifres do Sangue Lendário: por cima da escuridão e atrás da bola, para ficarem sólidos.
-        if (on && level >= Lendaria && Kind == GemArt.Sangue)
+        else if (level >= Lendaria && Kind == GemArt.Gelo && CBat.Length > 0)
+            BatSwarm(0.75f, t * 0.45f, cy, false, o);   // encaixada: o bando continua voando, devagar
+        else if (level >= Lendaria && Kind == GemArt.Corrompida && BallFrames.Length > 0 && MegaraMode == 2)
         {
+            // Encaixada: os tentáculos ficam de fora, menores e preguiçosos, e os olhinhos continuam espiando.
+            LegendBack(0.55f, t * 0.6f, gx, gy, cy, o);
+            LegendEyes(0.7f, t, cy, o);
+        }
+        if (level >= Lendaria && HoleTex >= 0) BlackHole(e, t, cy, o);
+        if (level >= Lendaria && Tesla3D >= 0) StormLegendBack(e, t, cy, o);
+        if (level >= Lendaria && HaloGem >= 0) DiamondHalo(e, t, cy, o);
+        if (on) AuraBack(ea, t, gx, gy, cy, o);
+        if (Icicle.Length > 0) { IceCrown(e, t, o); IceBurst(e, t, level, o, false); }
+        if (on && level >= Lendaria && Kind == GemArt.Corrompida && BallFrames.Length > 0 && MegaraMode == 2) LegendEyes(e, t, cy, o);
+        if (on && level >= Lendaria && Kind == GemArt.Gelo) GeloLegendMid(e, t, cy, o);
+        if (level >= Lendaria && Kind == GemArt.Gelo && GeloMode == 6 && CBat.Length == 0) IceWings(e, t, gx, gy, cy, true, o);
+        // Chifres do Sangue Lendário: por cima da escuridão e atrás da bola, para ficarem sólidos.
+        if (level >= Lendaria && Kind == GemArt.Sangue && (on || BloodVeins >= 0))
+        {
+            float ek = BloodVeins >= 0 ? 0.55f + 0.45f * e : e;   // 3D: gola e chifres sempre de pé
             // Gola alta de capa de vampiro (preta por fora, forro vermelho) abrindo atrás da bola.
             float flutter = 1f + 0.035f * MathF.Sin(t * 2.2f);
             // Olhos vermelhos se abrindo na escuridão, acima da gola (abrem, olham, piscam, somem).
@@ -240,11 +287,48 @@ internal sealed class GemStyle
                 float a = u > 0.75f ? (1f - u) / 0.25f : 1f;
                 o.Add(new Spr(BatFrame(t, k), px, py, sz * 1.4f, sz, side * -12f, e * a));
             }
-            o.Add(new Spr(Collar, 0, cy - 0.05f, 2.0f * flutter, 1.9f, 0, e));
-            o.Add(new Spr(M1, 0, cy + 0.02f, 1.25f, 1.25f, 0, e));      // chifres menores
+            o.Add(new Spr(Collar, 0, cy - 0.05f, 2.0f * flutter * CollarScale, 1.9f * CollarScale, 0, Math.Max(e, ek)));
+            o.Add(new Spr(M1, 0, cy + 0.02f, 1.25f, 1.25f, 0, Math.Max(e, ek)));      // chifres menores
         }
-        o.Add(new Spr(Ball, 0, 0, 1, 1, 0, 1));
+        if (Kind == GemArt.Luz && HolyFire.Length > 0 && LuzKillMode == 4 && KillAge < KillAbsorbLen) HolyFireBack(KillAge, t, gx, gy, o);
+        bool killGlowAfterBall = Kind == GemArt.Sangue && KillAge < KillAbsorbLen;
+        if (BallFrames.Length > 0)
+        {
+            // Gosma viva: escorre devagar em repouso e se agita com a Corrente ativa (dois quadros misturados, sem saltos).
+            float bp = t * (0.22f + 0.35f * e) + KillBoost(); bp -= MathF.Floor(bp);
+            float fpos = bp * BallFrames.Length; int b0 = (int)fpos % BallFrames.Length, b1 = (b0 + 1) % BallFrames.Length;
+            float bsz = 1f + 0.022f * breath * (0.4f + 0.6f * e);   // a gosma incha e murcha com a respiração
+            o.Add(new Spr(BallFrames[b0], 0, 0, bsz, bsz, 0, 1));
+            o.Add(new Spr(BallFrames[b1], 0, 0, bsz, bsz, 0, fpos - MathF.Floor(fpos)));
+            if (BallGlow.Length > 0 && e > 0.01f)
+            {
+                // Luz do olho aceso refletindo na gosma (pulsa com a respiração).
+                float gl = e * (0.75f + 0.25f * breath);
+                o.Add(new Spr(BallGlow[b0], 0, 0, bsz, bsz, 0, gl * (1f - (fpos - MathF.Floor(fpos)))));
+                o.Add(new Spr(BallGlow[b1], 0, 0, bsz, bsz, 0, gl * (fpos - MathF.Floor(fpos))));
+            }
+        }
+        else o.Add(new Spr(Ball, 0, 0, 1, 1, 0, 1));
+        if (killGlowAfterBall)
+        {
+            // Sangue absorvido: veias da hematita e poça do encaixe acendem (por cima da bola, atrás da joia).
+            float kq = KillAge / KillAbsorbLen, kf = 1f - kq;
+            if (BloodVeins >= 0) o.Add(new Spr(BloodVeins, 0, 0, 1, 1, 0, kf));
+        }
         if (Filaments.Length > 0) PlasmaGlobe(e, t, o);
+        if (GlobeShell >= 0)
+        {
+            var (sc3, st3, cyc3) = Storm(t, e);
+            if (st3 >= 0f || (st3 < 0f && sc3 < 0.15f && e > 0.05f))
+            {
+                // Descarga: o vidro trinca com eletricidade onde o raio bate e a trinca vai apagando.
+                float age = st3 >= 0f ? st3 * 0.16f : 0.16f + (t / 2.4f - MathF.Floor(t / 2.4f));
+                float a3 = Math.Max(0f, 1f - age / 0.55f);
+                int ci = (cyc3 + (st3 >= 0f ? 0 : -1)) % StormCrack.Length; if (ci < 0) ci += StormCrack.Length;
+
+            }
+            o.Add(new Spr(GlobeShell, 0, 0, 1, 1, 0, 1f));
+        }
         if (Veins >= 0)
         {
             // Veias de corrupção na superfície: se espalham (aparecem mais) com a Corrente ativa.
@@ -252,7 +336,7 @@ internal sealed class GemStyle
             float vs = Kind == GemArt.Corrompida ? 0.92f + 0.08f * e : Kind == GemArt.Gelo ? 1f + 0.015f * beat : 1f;
             o.Add(new Spr(Veins, 0, 0, vs, vs, 0, va));
         }
-        if (InnerA >= 0)
+        if (InnerA >= 0 && !OpaqueBall)
         {
             // Poder obscuro: duas camadas girando em sentidos opostos e oscilando de intensidade.
             float osc = 0.55f + 0.45f * MathF.Sin(t * 1.9f) * MathF.Sin(t * 0.7f + 1f);
@@ -260,7 +344,7 @@ internal sealed class GemStyle
             o.Add(new Spr(InnerA, 0, 0, 1f + 0.03f * beat, 1f + 0.03f * beat, t * 23f, (0.4f + 0.4f * osc + 0.25f * beat) * hb));
             o.Add(new Spr(InnerB, 0, 0, 1, 1, -t * 31f, (0.3f + 0.55f * (1f - osc) + 0.2f * beat) * hb));
         }
-        if (Kind == GemArt.Gelo && GeloMode == 6) o.Add(new Spr(IceShell, 0, 0, 1, 1, 0, 0.8f));
+        if (Kind == GemArt.Gelo && GeloMode == 6 && !OpaqueBall) o.Add(new Spr(IceShell, 0, 0, 1, 1, 0, 0.8f));
         if (Kind == GemArt.Gelo && GeloMode == 1)
         {
             // Lago congelado: rachaduras se espalham a cada batida e congelam de novo.
@@ -294,10 +378,34 @@ internal sealed class GemStyle
             }
             o.Add(new Spr(IceShell, 0, 0, 1, 1, 0, 1f));
         }
+        if (IceCrack.Length > 0) IceEnergy(e, t, o);
+        if (BloodVeins >= 0) o.Add(new Spr(BloodVeins, 0, 0, 1, 1, 0, Math.Min(1f, (0.25f + 0.55f * beat) * (0.55f + 0.45f * e))));   // veias pulsando na hematita
+        if (ChaosCrackNet >= 0) o.Add(new Spr(ChaosCrackNet, 0, 0, 1, 1, 0, 0.35f + 0.25f * MathF.Sin(t * 2.2f) * MathF.Sin(t * 0.9f + 1f) + 0.35f * e));   // fendas de energia na pedra
         if (level == Bronzea) o.Add(new Spr(RingBronze, 0, 0, 1, 1, 0, 1));
         else if (level == Prateada) o.Add(new Spr(RingSilver, 0, 0, 1, 1, 0, 1));
         else if (level >= Dourada) o.Add(new Spr(RingGold, 0, 0, 1, 1, 0, 1));
-        if (on)
+        if (level >= Lendaria && RingGoo >= 0) o.Add(new Spr(RingGoo, 0, 0, 1, 1, 0, 1));   // Lendária: anel quase engolido pela gosma
+        if (Socket >= 0)
+        {
+            // Encaixe esculpido na pedra (sempre ali; a joia o cobre quando está encaixada).
+            o.Add(new Spr(Socket, 0, 0, 1, 1, 0, 1f));
+            if (on)
+            {
+                o.Add(new Spr(SocketPoolTex, 0, 0, 1, 1, 0, e * (0.70f + 0.30f * beat)));   // sangue no fundo, pulsando
+                if (Kind == GemArt.Luz && EnergyA >= 0) o.Add(new Spr(EnergyA, 0, 0, 1, 1, 0, e * (0.75f + 0.25f * MathF.Sin(t * 3f))));   // energia acesa no encaixe, na cor da pedra
+                if (VeinB >= 0) o.Add(new Spr(VeinB, 0, 0, 1, 1, 0, e * beat * 0.8f));
+                if (GooLid.Length > 0)
+                {
+                    // A gosma se abre puxando um lábio grosso para os lados (e fecha de volta ao desativar).
+                    float op = MathF.Pow(e, 0.7f) * (GooLid.Length - 1);
+                    int l0 = Math.Min((int)op, GooLid.Length - 1), l1 = Math.Min(l0 + 1, GooLid.Length - 1);
+                    o.Add(new Spr(GooLid[l0], 0, 0, 1, 1, 0, 1f));
+                    if (l1 != l0) o.Add(new Spr(GooLid[l1], 0, 0, 1, 1, 0, op - l0));
+                }
+                o.Add(new Spr(Shadow, 0.05f * e, lift - 0.07f * e, s, s, 0, 0.45f * e));
+            }
+        }
+        else if (on)
         {
             o.Add(new Spr(Hole, 0, 0, 1, 1, 0, e));
             o.Add(new Spr(Shadow, 0.05f * e, lift - 0.07f * e, s, s, 0, 0.4f * e));
@@ -317,15 +425,50 @@ internal sealed class GemStyle
         }
         if (LinkFace >= 0) Chains(e, t, gx, gy, s, gemRot, strain, o);
         if (MLinkFace >= 0) MagicChains(e, t, gx, gy, s, fight, o);
-        if (Iris >= 0) LiveEye(e, t, gx, gy, s, breath, o);
+        if (GooStrand.Length > 0 && e > 0.02f) GooStrands(e, t, gx, gy, s, o);
+        if (Iris >= 0) LiveEye(e, t, gx, gy, s, breath, o, GemFrames.Length > 0 ? 1 : 3);   // 3D: o olho vai por cima da pedra (abaixo)
         if (GarEyes >= 0) Gargoyle(e, t, gx, gy, s, on && level >= Lendaria, o, false);
-        o.Add(new Spr(level >= Lapidada ? Gem2 : Gem, gx, gy, s, s, gemRot, 1));
+        int gemTex = level >= Lapidada ? Gem2 : Gem;
+        int batGlow = -1;
+        if (GemFrames.Length > 0)
+        {
+            // Pedra 3D: balança devagar de um lado para o outro (mais rápido ativa), mostrando as facetas.
+            float yaw = MathF.Sin(t * (0.7f + 0.5f * e)) * 0.5f * (e * e * (3f - 2f * e)) + 0.5f;   // parada quando encaixada
+            gemTex = GemFrames[Math.Clamp((int)MathF.Round(yaw * (GemFrames.Length - 1)), 0, GemFrames.Length - 1)];
+        }
+        if (CBat.Length > 0)
+        {
+            // Morcego de cristal: encaixado, fica parado de asas abertas dentro do encaixe;
+            // ao ativar sobe e bate as asas (fechando até a metade e abrindo de novo).
+            float flap = 0.5f - 0.5f * MathF.Cos(t * 3.4f);
+            float op = 1f - 0.55f * flap * (e * e * (3f - 2f * e));
+            gemTex = CBat[Math.Clamp((int)MathF.Round(op * (CBat.Length - 1)), 0, CBat.Length - 1)];
+            // Começo da subida: ainda abraçado na curva da pedra, descolando aos poucos.
+            float bend = 1f - Math.Clamp(e / 0.30f, 0f, 1f);
+            int gi = Math.Clamp((int)MathF.Round(op * (CBat.Length - 1)), 0, CBat.Length - 1);
+            if (CBatBend.Length > 0 && bend > 0.125f) { int bi2 = Math.Clamp((int)MathF.Round((1f - bend) * CBatBend.Length), 0, CBatBend.Length - 1); gemTex = CBatBend[bi2]; gi = CBat.Length + bi2; }
+            batGlow = gi;
+        }
+        if (VampInner >= 0) o.Add(new Spr(VampInner, gx, gy, s, s, gemRot, 1));   // 3D: o vampiro fica dentro, o gelo transparente vai por cima
+        o.Add(new Spr(gemTex, gx, gy, s, s, gemRot, 1));
+        if (Iris >= 0 && GemFrames.Length > 0) LiveEye(e, t, gx, gy, s, breath, o, 2);
+        if (RayFrames.Length > 0)
+        {
+            // Raios girando devagar (mais rápido com a Corrente ativa); 12 quadros cobrem o intervalo entre dois raios.
+            // Parados (alinhados com o encaixe) quando inativa; ao ativar começam a girar e, ao desativar, voltam ao lugar.
+            float ph = t * 0.35f; ph -= MathF.Floor(ph);
+            ph *= e * e * (3f - 2f * e);
+            // Quadro mais próximo + o resto girando o próprio sprite: movimento contínuo, sem saltos.
+            float fpos = ph * RayFrames.Length; int fi = (int)fpos;
+            float rest = (fpos - fi) / RayFrames.Length * 45f;
+            o.Add(new Spr(RayFrames[fi % RayFrames.Length], gx, gy, s, s, gemRot + rest, 1f));
+        }
         if (IceGlowA >= 0) TrueIce(e, t, gx, gy, s, o, on && level >= Lendaria);
         if (GarEyes >= 0) Gargoyle(e, t, gx, gy, s, on && level >= Lendaria, o, true);
         if (FlameInA >= 0) ChaosCrystal(e, t, gx, gy, s, o);
         if (OrbRune >= 0) RuneOrb(e, t, gx, gy, s, fight, o);
         if (BoltCore >= 0) LiveBolt(e, t, gx, gy, s, on && level >= Lendaria, cy, o);
-        if (level >= Lendaria && Kind == GemArt.Gelo && GeloMode == 6) IceWings(e, t, gx, gy, cy, false, o);
+        if (level >= Lendaria && Kind == GemArt.Gelo && GeloMode == 6 && CBat.Length == 0) IceWings(e, t, gx, gy, cy, false, o);
         if (Liquid.Length > 0)
         {
             // O sangue fica nivelado com o "chão": compensa a rotação da gota e balança atrasado.
@@ -333,11 +476,11 @@ internal sealed class GemStyle
             float tilt = -gemRot + slosh;
             int li = (int)MathF.Round(tilt / LiquidStep) + Liquid.Length / 2;
             li = Math.Clamp(li, 0, Liquid.Length - 1);
-            o.Add(new Spr(Liquid[li], gx, gy, s, s, gemRot, 1f));
-            o.Add(new Spr(GemGlow, gx, gy, s * 1.05f, s * 1.05f, 0, 0.12f + 0.38f * beat));   // coração batendo dentro
-            o.Add(new Spr(GlassTop, gx, gy, s, s, gemRot, 1f));
+            if (GemFrames.Length == 0) o.Add(new Spr(Liquid[li], gx, gy, s, s, gemRot, 1f));
+            if (GemFrames.Length == 0) o.Add(new Spr(GemGlow, gx, gy, s * 1.05f, s * 1.05f, 0, 0.12f + 0.38f * beat));   // coração batendo dentro
+            if (GemFrames.Length == 0) o.Add(new Spr(GlassTop, gx, gy, s, s, gemRot, 1f));
         }
-        if (Shine.Length > 0)
+        if (Shine.Length > 0 && GemFrames.Length == 0)
         {
             // Brilho reluzente em loop: uma faixa de luz cruza o cristal e depois descansa.
             float u = t / 2.6f; u -= MathF.Floor(u);
@@ -357,10 +500,19 @@ internal sealed class GemStyle
                 o.Add(new Spr(Glint, gx + TipX[tipI] * 0.5f * s, gy + TipY[tipI] * 0.5f * s, gsz, gsz, 0, tw));
             }
         }
-        if (level >= Radiante)   // luz interna pulsando, mesmo encaixada
+        if (level >= Radiante && GemFrames.Length == 0)   // luz interna pulsando, mesmo encaixada (só no clássico: na pedra 3D esbranquiçava)
             o.Add(new Spr(GemGlow, gx, gy, s * 1.1f, s * 1.1f, 0, 0.30f + 0.20f * MathF.Sin(t * 2.2f) + 0.2f * e));
         if (on) AuraFront(ea, t, level, o);
+        if (KillAge < KillAbsorbLen) KillAbsorb(KillAge, t, gx, gy, cy, o);
+        if (Icicle.Length > 0) IceBurst(e, t, level, o, true);
+        if (SpikeTex >= 0) ChaosImplode(e, t, level, gx, gy, o);
+        if (GlobeShell >= 0) StormBurst(e, t, level, gx, gy, o);
+        if (BloodVeins >= 0) BloodBurst(e, t, level, gx, gy, o);
+        if (LuzBeam >= 0) SunFlare(e, t, level, gx, gy, o);
+        if (GooBlob >= 0) GooSplash(e, t, level, gx, gy, o);
+        if (level >= Lendaria && Tesla3D >= 0) StormLegendFront(e, t, cy, o);
         if (on && level >= Lendaria) LegendFront(e, t, cy, o);
+        else if (level >= Lendaria && Kind == GemArt.Gelo && CBat.Length > 0) BatSwarm(0.75f, t * 0.45f, cy, true, o);
         if (on && level >= Radiante) Shards(e, t, cy, o);
         if (flash > 0.001f)
         {
@@ -392,7 +544,21 @@ internal sealed class GemStyle
             float slack = (1f - e) * 0.04f + 0.012f * MathF.Sin(t * 4f + c);   // frouxa encaixada, esticada solta
             int n = Math.Max(3, (int)(len / 0.058f));
             float ang = MathF.Atan2(dy, dx) * 180f / MathF.PI;
-            o.Add(new Spr(LinkFace, ax, ay, 0.13f, 0.13f, 0, 1f));      // argola presa na bola
+            bool is3d = ChainAnchor >= 0;
+            if (is3d)
+            {
+                // Sombra da corrente sobre a pedra (dá a sensação de que ela está em cima, em 3D).
+                for (int i = 1; i <= n; i++)
+                {
+                    float u = i / (float)n, sag = slack * 4f * u * (1f - u);
+                    float x = ax + dx * u, y = ay + dy * u - sag, sc = 0.85f + 0.35f * u;
+                    float lift = 0.010f + 0.022f * u;                              // mais alta perto da gota, sombra mais longe
+                    o.Add(new Spr(ShadowDot, x + lift, y - lift * 1.4f, 0.16f * sc, 0.12f * sc, ang, 0.55f));
+                }
+                o.Add(new Spr(ShadowDot, ax + 0.01f, ay - 0.02f, 0.22f, 0.16f, 0, 0.6f));
+                o.Add(new Spr(ChainAnchor, ax, ay - 0.01f, 0.19f, 0.19f, a * 180f / MathF.PI + 90f, 1f));   // olhal chumbado na pedra
+            }
+            else o.Add(new Spr(LinkFace, ax, ay, 0.13f, 0.13f, 0, 1f));      // argola presa na bola
             for (int i = 1; i <= n; i++)
             {
                 float u = i / (float)n;
@@ -401,9 +567,19 @@ internal sealed class GemStyle
                 // Cada elo alterna: de frente (oval) e de lado (barra).
                 bool face = (i & 1) == 0;
                 float lw = face ? 0.125f : 0.110f, lh = face ? 0.088f : 0.044f;
-                o.Add(new Spr(face ? LinkFace : LinkEdge, x, y, lw, lh, ang, 1f));
+                int tex = face ? LinkFace : LinkEdge;
+                if (is3d)
+                {
+                    // Elos 3D: a textura já tem a proporção; maiores perto da gota (mais perto da câmera)
+                    // e cada um levemente torcido, como corrente de verdade.
+                    float sc = 0.85f + 0.35f * u;
+                    lw = lh = 0.17f * sc;
+                    int tw = (int)(Hash(i * 7 + c * 13) * LinkVariants.Length);
+                    if (!face && LinkVariants.Length > 0) tex = LinkVariants[tw];
+                }
+                o.Add(new Spr(tex, x, y, lw, lh, ang, 1f));
                 // Tensão: os elos esquentam (mais perto da gota, mais quentes).
-                if (strain > 0.01f) o.Add(new Spr(face ? HotFace : HotEdge, x, y, lw * 1.15f, lh * 1.25f, ang, strain * (0.45f + 0.55f * u)));
+                if (strain > 0.01f) o.Add(new Spr(face ? HotFace : HotEdge, x, y, ChainAnchor >= 0 ? lw : lw * 1.15f, ChainAnchor >= 0 ? lh : lh * 1.25f, ang, strain * (0.45f + 0.55f * u)));
             }
             // Faíscas saindo da argola quando a corrente está no limite.
             if (strain > 0.25f)
@@ -422,30 +598,1425 @@ internal sealed class GemStyle
     /// Corrompida: tentáculos erguendo o olho (atrás) e o olho vivo: esclera, íris girando,
     /// pupila em fenda que olha em volta, pálpebras de escamas. A moldura (Gem) vem por cima.
     /// </summary>
-    void LiveEye(float e, float t, float gx, float gy, float s, float breath, List<Spr> o)
+    /// <summary>Quadro do tentáculo k: no 3D, ondas de gosma correndo pela peça; no clássico, a textura fixa.</summary>
+    int TentTex(int k, float t, float e)
     {
-        if (e > 0.001f)
+        if (TentFrames.Length == 0) return k == 0 ? M4 : k == 1 ? M5 : M6;
+        float p = t * (1.2f + 0.8f * e); p -= MathF.Floor(p);
+        return TentFrames[k * 8 + Math.Min(7, (int)(p * 8f))];
+    }
+
+    /// <summary>Olhinhos da Lendária se abrindo e fechando na escuridão em volta.</summary>
+    void LegendEyes(float e, float t, float cy, List<Spr> o)
+    {
+        for (int k = 0; k < 6; k++)
+        {
+            float u = t / 4.1f + k / 6f * 1.7f; int cyc = (int)MathF.Floor(u); float p = u - cyc;
+            float open = p < 0.1f ? p / 0.1f : p < 0.55f ? 1f : p < 0.65f ? 1f - (p - 0.55f) / 0.1f : 0f;
+            if (open <= 0f) continue;
+            float ang = (Hash(k * 19 + cyc * 7) * 2f - 1f) * MathF.PI;
+            float r = 0.80f + 0.45f * Hash(k * 3 + cyc * 13);
+            float sz = 0.22f + 0.10f * Hash(k * 5 + cyc);
+            o.Add(new Spr(MiniEye, MathF.Cos(ang) * r, cy + MathF.Sin(ang) * r * 0.85f, sz * 1.6f, sz * open, 0, e));
+        }
+    }
+
+    /// <summary>Estalactite (ponta para baixo): pingente principal com um ou dois menores grudados.</summary>
+    internal static Gem3D.Mesh IcicleMesh(int variant)
+    {
+        var parts = new List<(Gem3D.Mesh, V3, float)>();
+        void Add(float x, float top, float len, float w)
+        {
+            var m = Gem3D.CrystalPoint(0.30f, -0.95f, 0.65f, 0.95f);
+            var r = new Gem3D.Mesh();
+            foreach (var v in m.V) r.V.Add(new V3(x + v.X * w, top - (v.Y + 0.95f) / 1.9f * len, v.Z * w));
+            foreach (var f in m.F) r.F.Add(f);
+            parts.Add((r, V3.Zero, 1f));
+        }
+        Add(0f, 0.95f, 1.9f, 0.55f);
+        if (variant != 1) Add(-0.20f, 0.85f, 1.0f, 0.32f);
+        if (variant != 0) Add(0.20f, 0.88f, 1.25f, 0.30f);
+        return Gem3D.Merge(parts.ToArray());
+    }
+
+    /// <summary>
+    /// Coroa de estalactites: ao ativar, pontas de gelo brotam da borda da pedra, uma depois da outra (as de cima
+    /// para fora como uma coroa, as de baixo penduradas); as de baixo pingam gotas.
+    /// </summary>
+    void IceCrown(float e, float t, List<Spr> o)
+    {
+        if (e < 0.01f) return;
+        const int NT = 9, NB = 4;
+        for (int k = 0; k < NT + NB; k++)
+        {
+            bool top = k < NT;
+            float ad = top ? 18f + 144f * k / (NT - 1) : 235f + 70f * (k - NT) / (NB - 1);
+            float a = ad * MathF.PI / 180f;
+            float g = Clamp01((e - 0.04f * k) / 0.45f); g = g * g * (3f - 2f * g);
+            if (g <= 0f) continue;
+            float baseLen = top ? 0.26f + 0.16f * Hash(k * 7 + 3) * (1f - MathF.Abs(MathF.Cos(a)) * 0.6f) : 0.30f + 0.12f * Hash(k * 5);
+            float len = baseLen * g;
+            float dirA = top ? a : -MathF.PI / 2f + (a + MathF.PI / 2f) * 0.25f;        // as de baixo pendem quase retas
+            float r0 = 0.44f;
+            float bx = MathF.Cos(a) * r0, by = MathF.Sin(a) * r0;
+            float cx2 = bx + MathF.Cos(dirA) * len * 0.45f, cy2 = by + MathF.Sin(dirA) * len * 0.45f;
+            float rot = dirA * 180f / MathF.PI + 90f;
+            o.Add(new Spr(Icicle[k % Icicle.Length], cx2, cy2, len, len, rot, Math.Min(1f, g * 1.2f)));
+            if (!top && g > 0.95f && IceDrop >= 0)
+            {
+                // Gota se formando na ponta, solta e cai.
+                float u = t / (1.6f + 0.5f * Hash(k)) + Hash(k * 3); u -= MathF.Floor(u);
+                float tx = bx + MathF.Cos(dirA) * len * 0.95f, ty = by + MathF.Sin(dirA) * len * 0.95f;
+                float sz = u < 0.6f ? 0.03f + 0.05f * (u / 0.6f) : 0.08f;
+                float fy = u < 0.6f ? 0f : Sq((u - 0.6f) / 0.4f) * 0.8f;
+                o.Add(new Spr(IceDrop, tx, ty - sz * 0.4f - fy, sz * 0.8f, sz, 0, e * (u > 0.9f ? (1f - u) / 0.1f : 1f)));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Explosão de gelo ao ligar a Corrente: a pedra solta um anel de estilhaços 3D girando, uma onda de geada
+    /// e uma névoa fria que se espalha. front = estilhaços (na frente); senão névoa e onda (atrás).
+    /// </summary>
+    void IceBurst(float e, float t, int level, List<Spr> o, bool front)
+    {
+        int li = Math.Clamp(level, 0, 7);
+        if (!front)
+        {
+            if (_prevE[li] < 0.02f && e >= 0.02f && t > _prevT[li]) _burstAt[li] = t;   // só ao ligar de verdade (não no mesmo quadro)
+        _prevT[li] = t;
+            _prevE[li] = e;
+        }
+        float p = (t - _burstAt[li]) / 1.1f;
+        if (p < 0f || p > 1f) return;
+        float q = 1f - (1f - p) * (1f - p) * (1f - p);            // sai rápido e desacelera
+        if (!front)
+        {
+            float sz = 0.9f + 2.2f * q;
+            o.Add(new Spr(FrostRing, 0, 0.05f, sz, sz, 0, (1f - p) * 0.9f));
+            for (int k = 0; k < 8; k++)
+            {
+                float a = k / 8f * MathF.Tau + 0.4f;
+                float r = 0.35f + 0.75f * q;
+                o.Add(new Spr(Mist, MathF.Cos(a) * r, 0.05f + MathF.Sin(a) * r * 0.8f, 0.6f + 0.6f * q, 0.45f + 0.4f * q, 0, (1f - p) * 0.55f));
+            }
+            o.Add(new Spr(Halo, 0, 0.05f, 1.6f + 0.8f * q, 1.6f + 0.8f * q, 0, (1f - p) * (1f - p) * 0.9f));
+            return;
+        }
+        for (int k = 0; k < 16; k++)
+        {
+            float a = k / 16f * MathF.Tau + Hash(k * 13) * 0.35f;
+            float d = (0.45f + (0.55f + 0.45f * Hash(k * 7)) * q);
+            float x = MathF.Cos(a) * d, y = 0.05f + MathF.Sin(a) * d - p * p * 0.25f;
+            float sz = (0.10f + 0.08f * Hash(k * 3)) * (1f - 0.4f * p);
+            o.Add(new Spr(IceShard[k % IceShard.Length], x, y, sz, sz, a * 57.3f - 90f + p * 300f * (k % 2 == 0 ? 1 : -1), Math.Min(1f, (1f - p) * 1.6f)));
+        }
+    }
+
+    /// <summary>
+    /// Lendária da Tempestade: duas bobinas de Tesla de cobre sempre de pé ao lado da pedra. Encaixada, só um arco
+    /// pequeno estala no topo de vez em quando; ativa, a energia sobe pelos anéis e arcos ligam as bobinas ao globo.
+    /// </summary>
+    void TeslaCoils(float e, float t, float cy, List<Spr> o)
+    {
+        var (c, _, _) = Storm(t, e);
+        int fr = (int)MathF.Floor(t * 14f);
+        float yb = cy * e + 0.10f;
+        for (int sd = -1; sd <= 1; sd += 2)
+        {
+            float tx = sd * (0.90f + 0.17f), ty = yb + 0.58f;
+            if (e > 0.01f) Strike(tx, ty, sd * 0.40f, 0.22f, 0.20f + 0.08f * c, fr + (sd > 0 ? 7 : 0), e * (0.75f + 0.25f * MathF.Sin(t * 20f + sd)), o);
+            o.Add(new Spr(Tesla3D, sd * 0.90f, yb, 0.72f, 1.55f, -sd * 16f, 1f));
+            float up = t * (0.5f + 0.7f * e + 2.5f * c) + (sd > 0 ? 0.5f : 0f);
+            for (int k = 0; k < 3; k++)
+            {
+                float ph = up - k * 0.28f; ph -= MathF.Floor(ph);
+                float ga = MathF.Max(0f, 1f - ph * 2.2f);
+                o.Add(new Spr(CoilRings[k], sd * 0.90f, yb, 0.72f, 1.55f, -sd * 16f, Math.Min(1f, (0.25f + 0.75f * e) * (0.05f + 0.2f * c + 0.9f * ga))));
+            }
+            int nArc = e > 0.01f ? 2 : 1;
+            for (int k = 0; k < nArc; k++)
+            {
+                if (Hash(fr * 11 + k * 5 + sd * 3) > (e > 0.01f ? 0.35f + 0.6f * c : 0.12f)) continue;
+                float ang = Hash(fr * 13 + k + sd) * MathF.Tau;
+                float l = 0.12f + 0.18f * c;
+                Strike(tx, ty, tx + MathF.Cos(ang) * l, ty + MathF.Sin(ang) * l * 0.8f, 0.10f, fr + k, Math.Max(0.6f, e), o);
+            }
+        }
+    }
+
+    // ───────────── Abate: o alvo é puxado até a joia e absorvido ─────────────
+    public const float KillArrive = 0.75f;
+    const int KillN = 16;
+    /// <summary>Quando o abate chega na joia (algumas versões da Luz são mais lentas).</summary>
+    public float KillArriveT => Kind == GemArt.Gelo && CBat.Length > 0 ? 2.45f : Kind == GemArt.Tempestade && GlobeShell >= 0 ? 0.80f : Kind != GemArt.Luz ? KillArrive : LuzKillMode switch { 4 => 1.35f, 5 => 1.0f, 6 => 1.05f, 7 => 1.15f, 1 => 0.75f, _ => 0.75f };
+    public float KillDur => Kind == GemArt.Luz ? KillArriveT + 0.65f : (Kind == GemArt.Gelo && CBat.Length > 0) || (Kind == GemArt.Tempestade && GlobeShell >= 0) ? KillArriveT + 0.35f : KillGrab ? 1.05f : KillStreak >= 0 ? 1.0f : KillArrive + (KillCap >= 0 ? 0.55f : KillN * 0.035f);
+    public float KillAbsorbLen => Kind == GemArt.Luz ? (LuzKillMode == 4 ? 2.7f : 1.3f) : Kind == GemArt.Caos && KillRunes.Length > 0 ? 1.4f : 1.1f;
+    public const float KillAbsorbDur = 2.8f;   // o maior de todos (a barra usa para manter a joia redesenhando)
+
+    /// <summary>Gosma: uma volta a mais no escoamento logo depois de absorver (fecha o ciclo, sem salto).</summary>
+    float KillBoost()
+    {
+        if (KillAge >= KillAbsorbLen || KillAge < 0f) return 0f;
+        float q = KillAge / KillAbsorbLen; return q * q * (3f - 2f * q);
+    }
+
+    int KillTex(int k) => Kind switch
+    {
+        GemArt.Gelo when IceShard.Length > 0 => IceShard[k % IceShard.Length],
+        GemArt.Caos when KillRunes.Length > 0 => KillRunes[k % KillRunes.Length],
+        _ => Particle >= 0 ? Particle : Halo,
+    };
+
+    static (float x, float y) Bez(float fx, float fy, float dx, float dy, float nx, float ny, float q, float arc, float wob)
+    {
+        float qe = q * q * (0.55f + 0.45f * q);
+        float bend = 4f * q * (1f - q) * arc;
+        return (fx + dx * qe + nx * (bend + wob), fy + dy * qe + ny * (bend + wob));
+    }
+
+    /// <summary>Intensidade do fogo sagrado: acende quando as runas entram (≈0.9 s), queima e vai baixando.</summary>
+    float HolyFireK(float a)
+    {
+        float L = KillAbsorbLen, s0 = 0.85f;
+        if (a < s0) return 0f;
+        float q = (a - s0) / (L - s0);
+        return q < 0.10f ? q / 0.10f : q > 0.60f ? Math.Max(0f, (1f - q) / 0.40f) : 1f;
+    }
+
+    /// <summary>Quadro do fogo (dois vizinhos misturados) desenhado com a base presa na pedra, crescendo com k.</summary>
+    void FireLayer(int[] frames, float t, float speed, float gx, float gy, float size, float k, float alpha, List<Spr> o)
+    {
+        float ph = t * speed; ph -= MathF.Floor(ph);
+        float fp = ph * frames.Length; int f0 = (int)fp % frames.Length, f1 = (f0 + 1) % frames.Length; float fr = fp - MathF.Floor(fp);
+        float H = size * (0.35f + 0.65f * k);
+        float cy2 = gy - 0.12f + 0.20f * H;   // base da textura (v = -0.40) presa na pedra                                 // base da textura (v = -0.25) presa na pedra
+        o.Add(new Spr(frames[f0], gx, cy2, size, H, 0, alpha));
+        o.Add(new Spr(frames[f1], gx, cy2, size, H, 0, alpha * fr));
+    }
+
+    /// <summary>Um véu (dois quadros vizinhos misturados), com a base presa embaixo da pedra.</summary>
+    void VeilLayer(float t, float speed, float off, float x, float baseY, float w, float h, float rot, float alpha, List<Spr> o)
+    {
+        float ph = t * speed + off; ph -= MathF.Floor(ph);
+        float fp = ph * Veil.Length; int f0 = (int)fp % Veil.Length, f1 = (f0 + 1) % Veil.Length; float fr = fp - MathF.Floor(fp);
+        float cx = x - MathF.Sin(rot * MathF.PI / 180f) * h * 0.5f, cy2 = baseY + MathF.Cos(rot * MathF.PI / 180f) * h * 0.5f;
+        o.Add(new Spr(Veil[f0], cx, cy2, w, h, rot, alpha));
+        o.Add(new Spr(Veil[f1], cx, cy2, w, h, rot, alpha * fr));
+    }
+
+    /// <summary>Fogo sagrado atrás da pedra: véus altos subindo bem acima dela, ondulando.</summary>
+    void HolyFireBack(float a, float t, float gx, float gy, List<Spr> o)
+    {
+        float k = HolyFireK(a);
+        if (k <= 0f || Veil.Length == 0) return;
+        float H = 3.4f * (0.35f + 0.65f * k), baseY = gy - 0.30f;
+        VeilLayer(t, 0.55f, 0.00f, gx - 0.12f, baseY, 1.6f, H, 4f + 3f * MathF.Sin(t * 0.7f), k * 0.9f, o);
+        VeilLayer(t, 0.70f, 0.41f, gx + 0.18f, baseY, 1.3f, H * 0.85f, -6f + 3f * MathF.Sin(t * 0.8f + 1f), k * 0.8f, o);
+        VeilLayer(t, 0.45f, 0.73f, gx, baseY, 2.0f, H * 1.05f, 0f, k * 0.6f, o);
+    }
+
+    /// <summary>
+    /// Fogo sagrado na frente: véu fino por cima, clarão amarelo intenso na base da pedra, borda da joia acesa
+    /// em brasa e lascas de luz espirrando para os lados.
+    /// </summary>
+    void HolyFireFront(float a, float t, float gx, float gy, List<Spr> o)
+    {
+        float k = HolyFireK(a);
+        if (k <= 0f || Veil.Length == 0) return;
+        float H = 3.0f * (0.35f + 0.65f * k), baseY = gy - 0.25f;
+        VeilLayer(t, 0.80f, 0.23f, gx + 0.05f, baseY, 1.1f, H, 2f + 3f * MathF.Sin(t * 0.9f), k * 0.45f, o);
+        // Borda da pedra acesa (como o corpo do personagem em brasa).
+        if (FireRim >= 0) o.Add(new Spr(FireRim, gx, gy, 1f, 1f, t * 25f, k * (0.7f + 0.3f * MathF.Sin(t * 11f))));
+        // Clarão na base: o ponto mais quente, pulsando rápido.
+        float pul = 0.85f + 0.15f * MathF.Sin(t * 17f) * MathF.Sin(t * 7f + 1f);
+        if (FireBloom >= 0)
+        {
+            o.Add(new Spr(FireBloom, gx, gy - 0.40f, 1.30f * pul, 0.55f * pul, 0, k));
+            o.Add(new Spr(FireBloom, gx, gy - 0.30f, 0.55f, 0.35f, 0, k * 0.7f));
+        }
+        // Pontos de luz subindo dentro dos véus, balançando (como poeira brilhante na chama).
+        for (int j = 0; j < 14; j++)
+        {
+            float sp = 0.35f + 0.35f * Hash(j * 9);
+            float u = (t * sp + Hash(j * 5)) % 1f; int cyc = (int)(t * sp + Hash(j * 5));
+            float x = gx + (Hash(j * 3 + cyc * 13) - 0.5f) * 0.9f * (0.4f + u) + 0.12f * MathF.Sin(u * 8f + j * 1.3f);
+            float y = gy - 0.2f + u * 2.6f * (0.4f + 0.6f * k);
+            float sz = (0.05f + 0.07f * Hash(j + cyc)) * (1f - u * 0.6f) * (0.7f + 0.3f * MathF.Sin(t * 13f + j));
+            if (Particle >= 0) o.Add(new Spr(Particle, x, y, sz, sz, t * 60f, k * MathF.Sin(MathF.PI * u)));
+        }
+        // Lascas de luz espirrando para os lados, perto da base.
+        if (FireShard >= 0)
+            for (int j = 0; j < 8; j++)
+            {
+                float per = 0.55f + 0.3f * Hash(j * 3);
+                float u = (t / per + Hash(j * 7)) % 1f; int cyc = (int)(t / per + Hash(j * 7));
+                if (Hash(cyc * 13 + j) < 0.35f) continue;
+                float side = Hash(cyc * 5 + j) < 0.5f ? -1f : 1f;
+                float x = gx + side * (0.25f + 0.75f * u), y = gy - 0.25f + 0.12f * u - 0.25f * u * u + (Hash(j + cyc) - 0.5f) * 0.25f;
+                o.Add(new Spr(FireShard, x, y, 0.16f, 0.30f, side * (75f + 20f * Hash(cyc + j)), k * (1f - u)));
+            }
+    }
+
+    /// <summary>
+    /// Trajeto do abate (em pixels da tela, saindo de "from" até "to"), do jeito de cada elemento.
+    /// p = segundos desde o abate; unit = tamanho do botão em pixels.
+    /// </summary>
+    public void KillTravel(float p, float t, float fx, float fy, float tx, float ty, float unit, List<Spr> o)
+    {
+        float dx = tx - fx, dy = ty - fy, dist = MathF.Max(1f, MathF.Sqrt(dx * dx + dy * dy));
+        float nx = -dy / dist, ny = dx / dist;
+        if (Kind == GemArt.Gelo && CBat.Length > 0)
+        {
+            // A alma do alvo congela em cristais; um morceguinho de gelo sai da joia, agarra a alma e a traz.
+            const float S = 1.7f; float pp = p / S, A = KillArriveT / S;
+            float frz = Math.Clamp(pp / 0.35f, 0f, 1f);
+            bool carried = pp >= 0.60f;
+            float sx = fx, sy = fy;
+            if (carried)
+            {
+                float q = Math.Clamp((pp - 0.60f) / (A - 0.60f), 0f, 1f), qe = q * q * (3f - 2f * q);
+                var (bx, by) = Bez(fx, fy, dx, dy, nx, ny, qe, -0.25f * dist, MathF.Sin(q * 12f) * unit * 0.06f);
+                sx = bx; sy = by;
+            }
+            // Cristais crescendo em volta da alma (ficam no alvo, derretem depois que ela sai).
+            float shardA = carried ? Math.Max(0f, 1f - (pp - 0.60f) / 0.30f) : 1f;
+            for (int k = 0; k < 8 && IceShard.Length > 0; k++)
+            {
+                float an = k / 8f * MathF.Tau + 0.3f, ln = unit * (0.55f + 0.30f * Hash(k * 3)) * frz;
+                float cx = fx + MathF.Cos(an) * ln * 0.55f, cy2 = fy + MathF.Sin(an) * ln * 0.55f;
+                o.Add(new Spr(IceShard[k % IceShard.Length], cx, cy2, unit * 0.26f * frz, ln, an * 57.3f - 90f, shardA));
+            }
+            if (FrostRing >= 0 && pp < 0.6f) { float r = unit * (0.4f + 1.4f * frz); o.Add(new Spr(FrostRing, fx, fy, r, r, t * 20f, (1f - frz * 0.6f))); }
+            // Alma congelada: brilho azul com um núcleo branco, pulsando.
+            float pul = 0.9f + 0.1f * MathF.Sin(t * 7f);
+            if (Halo >= 0) o.Add(new Spr(Halo, sx, sy, unit * 1.4f * pul * frz, unit * 0.9f * pul * frz, 0, frz));
+            if (IceShard.Length > 0) o.Add(new Spr(IceShard[0], sx, sy, unit * 0.34f * frz, unit * 0.46f * frz, t * 120f, frz));
+            // Morcego: vai da joia até o alvo (0.15 a 0.60), depois volta carregando a alma (alma pendurada embaixo).
+            float bq; float bxp, byp; bool back;
+            if (pp < 0.15f) return;
+            if (!carried) { bq = (pp - 0.15f) / 0.45f; var (x, y) = Bez(tx, ty, -dx, -dy, -nx, -ny, bq * bq * (3f - 2f * bq), 0.3f * dist, 0f); bxp = x; byp = y; back = false; }
+            else { bxp = sx; byp = sy + unit * 0.45f; back = true; }
+            float flap = 0.5f + 0.5f * MathF.Sin(t * 8f);
+            int fi = Math.Clamp((int)MathF.Round((0.35f + 0.65f * flap) * (CBat.Length - 1)), 0, CBat.Length - 1);
+            float bs = unit * 1.35f;
+            if (Halo >= 0) o.Add(new Spr(Halo, bxp, byp, bs * 1.1f, bs * 0.8f, 0, 0.55f * Math.Min(1f, (pp - 0.15f) * 8f)));
+            float face = (back ? (dx < 0 ? 1f : -1f) : (dx < 0 ? -1f : 1f));
+            o.Add(new Spr(CBat[fi], bxp, byp, bs * face, bs, 0, Math.Min(1f, (pp - 0.15f) * 8f)));
+            if (Particle >= 0) for (int k = 0; k < 4; k++) { float u = (t * 1.5f + k * 0.25f) % 1f; o.Add(new Spr(Particle, bxp - (back ? dx : -dx) / dist * unit * 0.6f * u, byp + (Hash(k) - 0.5f) * unit * 0.3f, unit * 0.1f * (1f - u), unit * 0.1f * (1f - u), 0, 1f - u)); }
+            return;
+        }
+        if (Kind == GemArt.Tempestade && GlobeShell >= 0 && Lightning.Length > 0)
+        {
+            // O alvo carrega (faíscas em volta), e o raio é puxado dele: nas Lendárias cai nos para-raios das
+            // asas e corre por elas até a joia; nas outras, salta em arcos direto no raio de citrino.
+            int fr = (int)(t * 22f);
+            float chg = Math.Clamp(p / 0.25f, 0f, 1f);
+            if (p < 0.40f)
+            {
+                for (int k = 0; k < 3; k++)
+                {
+                    float an = Hash(fr * 7 + k) * MathF.Tau, l = unit * (0.30f + 0.35f * chg);
+                    Strike(fx, fy, fx + MathF.Cos(an) * l, fy + MathF.Sin(an) * l, unit * 0.22f, fr + k, 1f - Math.Max(0f, (p - 0.3f) / 0.1f), o);
+                }
+                if (Halo >= 0) o.Add(new Spr(Halo, fx, fy, unit * (0.6f + 0.8f * chg), unit * (0.6f + 0.8f * chg), 0, chg));
+            }
+            if (p < 0.25f) return;
+            float q = Math.Clamp((p - 0.25f) / (KillArriveT - 0.25f), 0f, 1f);
+            float fade = p > KillArriveT ? Math.Max(0f, 1f - (p - KillArriveT) / 0.3f) : 1f;
+            bool wings = _lv >= Lendaria && WingL3.Length > 0;
+            int nb = wings ? 2 : 3;
+            for (int b = 0; b < nb; b++)
+            {
+                float ex, ey;
+                if (wings)
+                {
+                    int sd = b == 0 ? -1 : 1;
+                    var (wx, wy) = WingTip(sd, 3, 0.8f);
+                    ex = tx + (sd * 0.22f + wx) * unit; ey = ty + (0.12f + wy) * unit;
+                }
+                else { ex = tx; ey = ty; }
+                // Raio em 3 saltos (zigue-zague com pontos de quebra que mudam a cada quadro).
+                float px0 = fx, py0 = fy;
+                int seg = 3;
+                for (int i = 1; i <= seg; i++)
+                {
+                    float u = i / (float)seg * Math.Min(1f, q * 2.2f);
+                    float side = (Hash(fr * 3 + b * 11 + i) - 0.5f) * 0.35f * (i < seg ? 1f : 0f) + (b - (nb - 1) * 0.5f) * 0.18f * MathF.Sin(MathF.PI * u);
+                    float x = fx + (ex - fx) * u + nx * side * dist, y = fy + (ey - fy) * u + ny * side * dist;
+                    Strike(px0, py0, x, y, unit * 0.45f, fr + b * 5 + i, fade, o);
+                    px0 = x; py0 = y;
+                }
+                if (q * 2.2f >= 1f && Halo >= 0) o.Add(new Spr(Halo, ex, ey, unit * 0.7f, unit * 0.7f, 0, fade));
+                // Nas asas: a energia corre pelo osso até o ombro e salta para a joia.
+                if (wings && q > 0.45f)
+                {
+                    int sd = b == 0 ? -1 : 1;
+                    float sx2 = tx + sd * 0.22f * unit, sy2 = ty + 0.12f * unit;
+                    float r = Math.Clamp((q - 0.45f) / 0.35f, 0f, 1f);
+                    if (Halo >= 0) o.Add(new Spr(Halo, ex + (sx2 - ex) * r, ey + (sy2 - ey) * r, unit * 0.45f, unit * 0.45f, 0, fade));
+                    if (r >= 1f) Strike(sx2, sy2, tx, ty, unit * 0.3f, fr + 9, fade, o);
+                }
+            }
+            return;
+        }
+        if (Kind == GemArt.Tempestade && Lightning.Length > 0)
+        {
+            if (p > 0.55f) return;
+            float a = p < 0.08f ? p / 0.08f : 1f - (p - 0.08f) / 0.47f;
+            int fr = (int)(t * 20f);
+            float ang = MathF.Atan2(dy, dx) * 180f / MathF.PI - 90f;
+            o.Add(new Spr(Lightning[fr % Lightning.Length], (fx + tx) * 0.5f, (fy + ty) * 0.5f, unit * 0.9f, dist, ang, a));
+            o.Add(new Spr(Lightning[(fr + 2) % Lightning.Length], (fx + tx) * 0.5f + nx * unit * 0.2f, (fy + ty) * 0.5f + ny * unit * 0.2f, unit * 0.6f, dist, ang, a * 0.6f));
+            if (Halo >= 0) o.Add(new Spr(Halo, fx, fy, unit * 1.2f, unit * 1.2f, 0, a * 0.8f));
+            return;
+        }
+        if (KillGrab)
+        {
+            // Simbionte: tentáculos de gosma saem da joia, se esticam até o alvo, agarram, e voltam
+            // puxando um bolo de gosma acesa em verde.
+            const int NT = 3;
+            float ext = p < 0.32f ? 1f - Sq(1f - p / 0.32f) : p < 0.42f ? 1f : Math.Max(0f, 1f - Sq((p - 0.42f) / 0.38f));
+            bool back = p >= 0.42f;
+            for (int k = 0; k < NT; k++)
+            {
+                float side = (k - 1) * 0.55f + (Hash(k * 7) - 0.5f) * 0.2f;
+                const int SEG = 80;
+                float tipX = 0, tipY = 0;
+                for (int i = 0; i <= SEG; i++)
+                {
+                    float u = 0.10f + i / (float)SEG * (ext - 0.10f);                // da borda da joia até a ponta
+                    if (ext <= 0.10f) break;
+                    float m = 1f - u;
+                    // Da joia (to) até o alvo (from), com arco e contorção.
+                    float c1x = tx + nx * side * dist * 0.45f - dx * 0.15f, c1y = ty + ny * side * dist * 0.45f - dy * 0.15f;
+                    float c2x = fx + nx * side * dist * 0.15f + dx * 0.10f, c2y = fy + ny * side * dist * 0.15f + dy * 0.10f;
+                    float x = m * m * m * tx + 3 * m * m * u * c1x + 3 * m * u * u * c2x + u * u * u * fx;
+                    float y = m * m * m * ty + 3 * m * m * u * c1y + 3 * m * u * u * c2y + u * u * u * fy;
+                    float wr = (MathF.Sin(u * 12f - t * 10f + k * 2f) + 0.5f * (GemArt.SmoothNoise(u * 6f + t * 3f, k + 30) - 0.5f)) * unit * 0.14f * MathF.Sin(MathF.PI * Math.Min(1f, u / Math.Max(0.05f, ext)));
+                    x += nx * wr; y += ny * wr;
+                    float along = i / (float)SEG;                                     // 0 base .. 1 ponta
+                    float w = unit * (0.26f - 0.18f * along) * (0.8f + 0.4f * GemArt.SmoothNoise(along * 8f - t * 6f, k));
+                    o.Add(new Spr(KillCap, x, y, w, w * 1.3f, 0, Math.Min(1f, ext * 4f)));
+                    tipX = x; tipY = y;
+                }
+                // Ponta: garra que agarra; na volta, bolo de gosma com brilho verde.
+                if (back && GooBlob >= 0)
+                {
+                    float bs = unit * 0.34f;
+                    o.Add(new Spr(GooBlob, tipX, tipY, bs, bs * 1.2f, t * 90f + k * 60f, 1f));
+                    if (Halo >= 0) o.Add(new Spr(Halo, tipX, tipY, bs * 1.8f, bs * 1.8f, 0, 0.5f));
+                }
+            }
+            // Agarrou: o alvo é apertado (anel de gosma em volta e respingos verdes).
+            float gp = (p - 0.30f) / 0.20f;
+            if (gp > 0f && gp < 1f)
+            {
+                for (int k = 0; k < 10; k++)
+                {
+                    float an = k / 10f * MathF.Tau + gp * 3f, rr = unit * (0.55f - 0.3f * gp);
+                    o.Add(new Spr(KillCap, fx + MathF.Cos(an) * rr, fy + MathF.Sin(an) * rr, unit * 0.14f, unit * 0.18f, 0, 1f - gp * 0.5f));
+                }
+                if (Halo >= 0) o.Add(new Spr(Halo, fx, fy, unit * 1.3f, unit * 1.3f, 0, (1f - gp) * 0.6f));
+            }
+            return;
+        }
+        if (Kind == GemArt.Luz && LuzKillMode != 0 && KillStreak >= 0)
+        {
+            int fr = (int)(t * 20f);
+            float ang = MathF.Atan2(dy, dx) * 180f / MathF.PI - 90f;
+            switch (LuzKillMode)
+            {
+                case 1:
+                {
+                    // Feixe: um raio de luz liga o alvo à joia; um pulso de luz corre por ele e o feixe some.
+                    float grow = Math.Clamp(p / 0.15f, 0f, 1f), fade = p < 0.75f ? 1f : Math.Max(0f, 1f - (p - 0.75f) / 0.25f);
+                    float hx = fx + dx * grow, hy = fy + dy * grow;
+                    float w = unit * (0.35f + 0.1f * MathF.Sin(t * 30f)) * fade;
+                    float l = dist * grow;
+                    o.Add(new Spr(KillStreak, (fx + hx) * 0.5f, (fy + hy) * 0.5f, w * 2.2f, l, ang, fade));
+                    o.Add(new Spr(KillStreak2, (fx + hx) * 0.5f, (fy + hy) * 0.5f, w * 1.2f, l, ang, fade * 0.8f));
+                    float pp = Math.Clamp((p - 0.12f) / 0.55f, 0f, 1f);
+                    if (pp > 0f && pp < 1f)
+                    {
+                        float px = fx + dx * pp * pp, py = fy + dy * pp * pp;
+                        if (Halo >= 0) o.Add(new Spr(Halo, px, py, unit * 1.0f, unit * 1.0f, 0, 1f));
+                        if (HaloGem >= 0) o.Add(new Spr(HaloGem, px, py, unit * 0.35f, unit * 0.35f, t * 400f, 1f));
+                    }
+                    for (int k = 0; k < 10; k++)
+                    {
+                        float u = (Hash(k * 7 + fr / 3) + t * 0.5f) % 1f;
+                        if (Particle >= 0 && u < grow) o.Add(new Spr(Particle, fx + dx * u + nx * (Hash(k + fr) - 0.5f) * unit * 0.5f, fy + dy * u + ny * (Hash(k + fr) - 0.5f) * unit * 0.5f, unit * 0.18f, unit * 0.18f, 0, fade));
+                    }
+                    if (Halo >= 0 && p < 0.3f) o.Add(new Spr(Halo, fx, fy, unit * 1.3f, unit * 1.3f, 0, 1f - p / 0.3f));
+                    return;
+                }
+                case 2:
+                {
+                    // Cometas: diamantes de luz cruzando em arcos, cada um com uma cauda prismática.
+                    for (int k = 0; k < 6; k++)
+                    {
+                        float side = (k - 2.5f) / 2.5f * (0.8f + 0.4f * Hash(k * 3));
+                        float q = (p - k * 0.05f) / KillArrive;
+                        if (q <= 0f || q >= 1.2f) continue;
+                        float qh = Math.Min(1f, q), qt = Math.Clamp(q - 0.22f, 0f, 1f);
+                        float lx = 0, ly = 0;
+                        for (int i = 0; i <= 10; i++)
+                        {
+                            float sq = qt + (qh - qt) * i / 10f;
+                            var (x, y) = Bez(fx, fy, dx, dy, nx, ny, sq, side * dist * 0.35f, 0f);
+                            if (i > 0)
+                            {
+                                float sx = x - lx, sy = y - ly, ln = MathF.Sqrt(sx * sx + sy * sy);
+                                float w = unit * 0.20f * (i / 10f);
+                                o.Add(new Spr((k & 1) == 0 ? KillStreak : KillStreak2, (x + lx) * 0.5f, (y + ly) * 0.5f, w * 2f, ln * 1.3f + w, MathF.Atan2(-sx, sy) * 180f / MathF.PI, Math.Min(1f, (1.2f - q) * 4f)));
+                            }
+                            lx = x; ly = y;
+                        }
+                        if (q < 1f && HaloGem >= 0) o.Add(new Spr(HaloGem, lx, ly, unit * 0.32f, unit * 0.32f, t * 300f + k * 50f, 1f));
+                        if (q < 1f && Particle >= 0) o.Add(new Spr(Particle, lx, ly, unit * 0.45f, unit * 0.45f, 0, 0.8f));
+                    }
+                    return;
+                }
+                case 3:
+                {
+                    // Penas de luz: soltam do alvo, flutuam balançando e são levadas até a joia.
+                    for (int k = 0; k < 12; k++)
+                    {
+                        float q = (p - k * 0.03f) / KillArrive;
+                        if (q <= 0f || q >= 1f) continue;
+                        float side = (Hash(k * 5) - 0.5f) * 2f;
+                        float sway = MathF.Sin(q * 9f + k) * unit * 0.35f * (1f - q);
+                        var (x, y) = Bez(fx, fy, dx, dy, nx, ny, q, side * dist * 0.30f, sway);
+                        float rot = 35f * MathF.Sin(q * 9f + k) + ang + 90f;
+                        float sz = unit * (0.34f + 0.12f * Hash(k)) * (1f - 0.4f * q);
+                        o.Add(new Spr(LightFeather, x, y, sz * 0.6f, sz * 1.4f, rot, Math.Min(1f, q * 6f) * (q > 0.9f ? (1f - q) / 0.1f : 1f)));
+                    }
+                    if (Halo >= 0 && p < 0.35f) o.Add(new Spr(Halo, fx, fy, unit * (0.8f + p * 2f), unit * (0.8f + p * 2f), 0, 1f - p / 0.35f));
+                    return;
+                }
+                case 4:
+                {
+                    // Runas sagradas vampíricas, douradas, em espiral até a joia.
+                    for (int k = 0; k < KillRunes.Length; k++)
+                    {
+                        float q = (p - k * 0.07f) / (KillArriveT - 0.55f);
+                        if (q <= 0f || q >= 1f) continue;
+                        float side = 0.6f + 0.6f * Hash(k * 5);
+                        var (x, y) = Bez(fx, fy, dx, dy, nx, ny, q, -side * dist * 0.38f, MathF.Sin(q * 9f + k) * unit * 0.08f);
+                        float sz = unit * 0.68f * (1f - 0.30f * q), a = Math.Min(1f, q * 5f) * (q > 0.92f ? (1f - q) / 0.08f : 1f);
+                        if (Halo >= 0) o.Add(new Spr(Halo, x, y, sz * 1.6f, sz * 1.6f, 0, a * 0.4f));
+                        o.Add(new Spr(KillRunes[k], x, y, sz, sz, 12f * MathF.Sin(t * 3f + k), a));
+                    }
+                    if (Halo >= 0 && p < 0.35f) o.Add(new Spr(Halo, fx, fy, unit * (0.8f + p * 2f), unit * (0.8f + p * 2f), 0, 1f - p / 0.35f));
+                    return;
+                }
+                case 5:
+                {
+                    // Auréola: um anel de luz sobe do alvo, voa e pousa sobre a joia como uma coroa.
+                    float A = KillArriveT;
+                    float rise = Math.Clamp(p / 0.25f, 0f, 1f);
+                    float q = Math.Clamp((p - 0.15f) / (A - 0.15f), 0f, 1f);
+                    float x, y;
+                    if (q <= 0f) { x = fx; y = fy + rise * unit * 0.9f; }
+                    else
+                    {
+                        float qe = q * q * (3f - 2f * q);
+                        float sx2 = fx, sy2 = fy + unit * 0.9f, ex = tx, ey = ty + unit * 0.75f;
+                        x = sx2 + (ex - sx2) * qe; y = sy2 + (ey - sy2) * qe + MathF.Sin(MathF.PI * qe) * dist * 0.25f;
+                    }
+                    float settle = Math.Clamp((p - A) / 0.5f, 0f, 1f);
+                    y -= settle * unit * 0.35f;
+                    float w = unit * (1.0f - 0.2f * settle), hgt = w * (0.32f + 0.08f * MathF.Sin(t * 6f));
+                    float a = Math.Min(1f, rise * 2f) * (1f - settle);
+                    if (Halo >= 0) o.Add(new Spr(Halo, x, y, w * 1.5f, w * 1.0f, 0, a * 0.6f));
+                    o.Add(new Spr(HaloRingTex, x, y, w, hgt, 8f * MathF.Sin(t * 3f), a));
+                    for (int k = 0; k < 6; k++)
+                    {
+                        float u = (t * 1.3f + k / 6f) % 1f;
+                        if (Particle >= 0) o.Add(new Spr(Particle, x + (Hash(k) - 0.5f) * w, y - u * unit * 0.6f, unit * 0.14f, unit * 0.14f, 0, a * (1f - u)));
+                    }
+                    return;
+                }
+                case 6:
+                {
+                    // Morcegos de diamante: um bando sai do alvo batendo as asas e voa até a joia.
+                    float A = KillArriveT;
+                    for (int k = 0; k < 6; k++)
+                    {
+                        float q = (p - k * 0.05f) / (A - 0.25f);
+                        if (q <= 0f || q >= 1f) continue;
+                        float side = (k - 2.5f) / 2.5f;
+                        float bob = MathF.Sin(t * 14f + k * 1.7f) * unit * 0.10f;
+                        var (x, y) = Bez(fx, fy, dx, dy, nx, ny, q, side * dist * 0.30f, bob);
+                        int fi = (int)((t * 12f + k * 1.3f) % 4f); fi = fi == 3 ? 1 : fi;   // bate as asas (0-1-2-1)
+                        float sz = unit * (0.95f + 0.15f * Hash(k)) * (1f - 0.35f * q);
+                        float a = Math.Min(1f, q * 6f) * (q > 0.9f ? (1f - q) / 0.1f : 1f);
+                        if (Halo >= 0) o.Add(new Spr(Halo, x, y, sz * 1.1f, sz * 0.8f, 0, a * 0.35f));
+                        o.Add(new Spr(LightBat[fi + 1], x, y, sz, sz, -dx / dist * 10f, a));
+                    }
+                    if (Halo >= 0 && p < 0.3f) o.Add(new Spr(Halo, fx, fy, unit * 1.4f, unit * 1.4f, 0, 1f - p / 0.3f));
+                    return;
+                }
+                case 7:
+                {
+                    // Constelação: estrelas acendem em volta do alvo e se ligam por fios de luz; depois a
+                    // constelação inteira é puxada até a joia, se fechando.
+                    const int NS = 7;
+                    float A = KillArriveT;
+                    Span<float> sx3 = stackalloc float[NS], sy3 = stackalloc float[NS];
+                    float form = Math.Clamp(p / 0.35f, 0f, 1f);
+                    for (int k = 0; k < NS; k++)
+                    {
+                        float an = k / (float)NS * MathF.Tau + Hash(k * 3) * 0.6f, rr = unit * (0.6f + 0.7f * Hash(k * 11));
+                        float ox = MathF.Cos(an) * rr, oy = MathF.Sin(an) * rr * 0.8f;
+                        float q = Math.Clamp((p - 0.35f - k * 0.04f) / (A - 0.45f), 0f, 1f), qe = q * q * (3f - 2f * q);
+                        float bx = fx + ox * (1f - qe), by = fy + oy * (1f - qe);
+                        float side = (Hash(k * 5) - 0.5f) * 1.2f;
+                        float bend = 4f * qe * (1f - qe) * side * dist * 0.3f;
+                        sx3[k] = bx + (tx - fx) * qe + nx * bend; sy3[k] = by + (ty - fy) * qe + ny * bend;
+                    }
+                    float fade = p > A ? Math.Max(0f, 1f - (p - A) / 0.3f) : 1f;
+                    for (int k = 0; k < NS; k++)
+                    {
+                        int j = (k + 1) % NS, m = (k + 3) % NS;
+                        foreach (int b in new[] { j, m })
+                        {
+                            if (b == m && (k & 1) == 1) continue;
+                            float lx2 = sx3[b] - sx3[k], ly2 = sy3[b] - sy3[k], ln = MathF.Sqrt(lx2 * lx2 + ly2 * ly2) * form;
+                            if (ln < 1f) continue;
+                            float ex = sx3[k] + lx2 * form, ey = sy3[k] + ly2 * form;
+                            o.Add(new Spr((k & 1) == 0 ? KillStreak : KillStreak2, (sx3[k] + ex) * 0.5f, (sy3[k] + ey) * 0.5f, unit * 0.12f, ln, MathF.Atan2(-lx2, ly2) * 180f / MathF.PI, 0.75f * fade));
+                        }
+                    }
+                    for (int k = 0; k < NS; k++)
+                    {
+                        float tw = 0.75f + 0.25f * MathF.Sin(t * 9f + k * 2f);
+                        float a = Math.Clamp((p - k * 0.04f) / 0.1f, 0f, 1f) * fade;
+                        if (Particle >= 0) o.Add(new Spr(Particle, sx3[k], sy3[k], unit * 0.55f * tw, unit * 0.55f * tw, t * 40f, a));
+                        if (HaloGem >= 0) o.Add(new Spr(HaloGem, sx3[k], sy3[k], unit * 0.20f, unit * 0.20f, t * 120f, a));
+                    }
+                    return;
+                }
+            }
+        }
+        if (KillStreak >= 0)
+        {
+            // Transfusão: fitas finas de sangue explodem do alvo abrindo em leque, fazem um arco largo
+            // e chicoteiam até a joia, onde o sangue espirra em névoa e é absorvido.
+            const int NR = 7;
+            for (int r = 0; r < NR; r++)
+            {
+                float side = (r - (NR - 1) * 0.5f) / ((NR - 1) * 0.5f);               // -1 .. 1
+                side = side * (0.75f + 0.35f * Hash(r * 13)) + (Hash(r * 7) - 0.5f) * 0.25f;
+                float delay = Hash(r * 5) * 0.08f;
+                float pr = p - delay;
+                float head = Math.Clamp(pr / 0.62f, 0f, 1f), tail = Math.Clamp((pr - 0.16f) / 0.62f, 0f, 1f);
+                head = 1f - (1f - head) * (1f - head); tail = tail * tail * (3f - 2f * tail);
+                if (head <= 0.001f || tail >= 0.999f) continue;
+                // Bézier cúbica: sai do alvo para o lado (leque), faz o arco e entra na joia.
+                bool prism = Kind == GemArt.Luz;
+                float spread = prism ? 0.06f : 0.75f, spread2 = prism ? 0.02f : 0.22f;
+                float c1x = fx + nx * side * dist * spread + dx * 0.10f, c1y = fy + ny * side * dist * spread + dy * 0.10f;
+                float c2x = tx + nx * side * dist * spread2 - dx * 0.20f, c2y = ty + ny * side * dist * spread2 - dy * 0.20f;
+                const int SEG = 22;
+                float lx = 0, ly = 0;
+                for (int i = 0; i <= SEG; i++)
+                {
+                    float u = i / (float)SEG, sp = tail + (head - tail) * u, m = 1f - sp;
+                    float x = m * m * m * fx + 3 * m * m * sp * c1x + 3 * m * sp * sp * c2x + sp * sp * sp * tx;
+                    float y = m * m * m * fy + 3 * m * m * sp * c1y + 3 * m * sp * sp * c2y + sp * sp * sp * ty;
+                    float wig = prism
+                        ? MathF.Sin(sp * 7f - t * 9f + r * MathF.Tau / 7f) * unit * (0.16f + 0.08f * Hash(r)) * MathF.Sin(MathF.PI * sp)    // fios trançando em volta uns dos outros
+                        : MathF.Sin(sp * 14f - t * 18f + r) * unit * 0.05f * (1f - sp);
+                    x += nx * wig; y += ny * wig;
+                    if (i > 0)
+                    {
+                        float taper = MathF.Pow(MathF.Max(0f, MathF.Sin(MathF.PI * u)), 0.6f);
+                        float w = unit * (0.05f + 0.06f * Hash(r * 3)) * (0.35f + 0.65f * taper) * (1.2f - 0.4f * sp);
+                        float sx = x - lx, sy = y - ly, len = MathF.Sqrt(sx * sx + sy * sy);
+                        o.Add(new Spr(prism && (r & 1) == 1 && KillStreak2 >= 0 ? KillStreak2 : KillStreak, (x + lx) * 0.5f, (y + ly) * 0.5f, w * (prism ? 3.0f : 2.2f), len * 1.25f + w, MathF.Atan2(-sx, sy) * 180f / MathF.PI, Math.Min(1f, 0.35f + taper)));
+                    }
+                    lx = x; ly = y;
+                }
+            }
+            // Jorro no alvo (logo que as fitas saem).
+            if (p < 0.35f)
+            {
+                float q = p / 0.35f;
+                if (Halo >= 0) o.Add(new Spr(Halo, fx, fy, unit * (0.7f + 1.2f * q), unit * (0.7f + 1.2f * q), 0, (1f - q) * 0.8f));
+                for (int k = 0; k < 8; k++)
+                {
+                    float an = k / 8f * MathF.Tau + Hash(k) * 0.6f, rr = unit * (0.15f + 0.6f * q) * (0.6f + 0.6f * Hash(k * 3));
+                    float sz = unit * 0.12f * (1f - q);
+                    o.Add(new Spr(KillCap >= 0 ? KillCap : Particle, fx + MathF.Cos(an) * rr, fy + MathF.Sin(an) * rr - q * q * unit * 0.4f, sz * (KillCap >= 0 ? 1f : 2f), sz * (KillCap >= 0 ? 1.2f : 2f), 0, 1f - q));
+                }
+            }
+            // Espirro de sangue na joia quando as fitas chegam.
+            float ap = (p - 0.55f) / 0.35f;
+            if (ap > 0f && ap < 1f)
+            {
+
+                for (int k = 0; k < 12; k++)
+                {
+                    float an = k / 12f * MathF.Tau + Hash(k * 11) * 0.5f, rr = unit * (0.55f + 0.55f * MathF.Sqrt(ap)) * (0.8f + 0.4f * Hash(k * 5));
+                    float sz = unit * (0.10f + 0.10f * Hash(k)) * (1f - ap * 0.6f);
+                    o.Add(new Spr(KillCap >= 0 ? KillCap : Particle, tx + MathF.Cos(an) * rr, ty + MathF.Sin(an) * rr, sz * (KillCap >= 0 ? 1f : 2f), sz * (KillCap >= 0 ? 1.3f : 2f), KillCap >= 0 ? an * 57.3f + 90f : 0f, (1f - ap)));
+                }
+            }
+            return;
+        }
+        if (KillCap >= 0)
+        {
+            // Líquido de verdade: um fio principal de bolhas que se fundem, engrossando e afinando sem regra
+            // (bolsões correndo por ele), e dois fios finos que se soltam pelos lados e voltam a se juntar.
+            float head = Math.Clamp(p / KillArrive, 0f, 1f), tail = Math.Clamp((p - 0.42f) / (KillArrive + 0.13f), 0f, 1f);
+            if (tail >= 0.999f) return;
+            float arc = 0.20f * dist, len01 = head - tail;
+            float aAll = Math.Min(1f, len01 * 5f);
+            float hx = 0, hy = 0, hrot = 0;
+            for (int strand = 0; strand < 3; strand++)
+            {
+                int nb = strand == 0 ? 56 : 70;
+                float sideK = strand == 0 ? 0f : (strand == 1 ? 1f : -1f);
+                for (int i = 0; i < nb; i++)
+                {
+                    float u = (i + 0.5f) / nb;
+                    float q = tail + len01 * u;
+                    // Fios laterais: só no meio, afastando e voltando.
+                    float sep = sideK * MathF.Pow(MathF.Sin(MathF.PI * u), 2f) * unit * (0.30f + 0.25f * GemArt.SmoothNoise(t * 1.5f + strand * 7f, strand));
+                    float n1 = GemArt.SmoothNoise(u * 7f - t * 5f + strand * 3f, 11 + strand) - 0.5f;
+                    float n2 = GemArt.SmoothNoise(u * 13f - t * 8f, 23 + strand) - 0.5f;
+                    float wob = (n1 * 0.22f + MathF.Sin(q * 10f - t * 7f) * 0.05f) * unit * (1f - q * 0.7f) + sep;
+                    var (x, y) = Bez(fx, fy, dx, dy, nx, ny, q, arc, wob);
+                    var (x2, y2) = Bez(fx, fy, dx, dy, nx, ny, Math.Min(1f, q + 0.01f), arc, wob);
+                    float rot = MathF.Atan2(-(x2 - x), y2 - y) * 180f / MathF.PI;
+                    // Espessura irregular: bolsões que correm pelo fio, mais grosso perto da frente.
+                    float bulge = MathF.Max(0f, MathF.Sin(u * 9f - t * 11f + strand)) * 0.6f;
+                    float th = strand == 0 ? (0.10f + 0.16f * u) : 0.11f * (0.35f + 0.65f * MathF.Sin(MathF.PI * u));
+                    float w = unit * th * (0.6f + 1.1f * (n2 + 0.5f) + bulge) * (1f - 0.30f * q);
+                    o.Add(new Spr(KillCap, x, y, w, w * (1.3f + 0.5f * bulge), rot, aAll));
+                    if (strand == 0 && i == nb - 1) { hx = x; hy = y; hrot = rot; }
+                }
+            }
+            // Cabeça: gota grande e trêmula.
+            if (head < 1f)
+            {
+                float hs = unit * (0.38f + 0.06f * MathF.Sin(t * 17f));
+                o.Add(new Spr(KillCap, hx, hy, hs, hs * 1.25f, hrot, 1f));
+            }
+            // Gotas que se soltam e caem pelo caminho.
+            for (int k = 0; k < 9; k++)
+            {
+                float q0 = (k + 0.5f) / 9f, born = q0 * KillArrive, age = p - born;
+                if (age < 0f || age > 0.5f) continue;
+                var (bx, by) = Bez(fx, fy, dx, dy, nx, ny, q0, arc, 0f);
+                float side = Hash(k * 9) - 0.5f;
+                float gx2 = bx + nx * side * unit * 1.1f * age / 0.5f, gy2 = by + ny * side * unit * 1.1f * age / 0.5f - age * age * unit * 1.6f;
+                float sz = unit * (0.08f + 0.07f * Hash(k)) * (1f - age / 0.5f);
+                o.Add(new Spr(KillCap, gx2, gy2, sz, sz * 1.2f, 0, 1f - age / 0.5f));
+            }
+            if (p < 0.4f && Halo >= 0) o.Add(new Spr(Halo, fx, fy, unit * (0.8f + p * 2f), unit * (0.8f + p * 2f), 0, (1f - p / 0.4f) * 0.6f));
+            return;
+        }
+        float arcK = (Kind == GemArt.Caos ? 0.38f : Kind == GemArt.Gelo ? 0.30f : 0.18f) * dist;
+        int n = Kind == GemArt.Caos && KillRunes.Length > 0 ? KillRunes.Length : KillN;
+        for (int k = 0; k < n; k++)
+        {
+            float q = (p - k * (Kind == GemArt.Caos ? 0.06f : 0.035f)) / KillArrive;
+            if (q <= 0f || q >= 1f) continue;
+            float side = (k % 2 == 0 ? 1f : -1f) * (0.4f + 0.6f * Hash(k * 7));
+            if (Kind == GemArt.Caos) side = 0.6f + 0.6f * Hash(k * 5);   // espiral num sentido só, raios diferentes
+            float wob = MathF.Sin(q * 9f + k) * unit * 0.08f * (1f - q);
+            var (x, y) = Bez(fx, fy, dx, dy, nx, ny, q, arcK * side, wob);
+            var (x2, y2) = Bez(fx, fy, dx, dy, nx, ny, Math.Min(1f, q + 0.02f), arcK * side, wob);
+            float rot = MathF.Atan2(-(x2 - x), y2 - y) * 180f / MathF.PI + 180f;
+            float sz = unit * (0.24f + 0.14f * Hash(k * 3)) * (1f - 0.40f * q);
+            float a = Math.Min(1f, q * 6f) * (q > 0.9f ? (1f - q) / 0.1f : 1f);
+            if (Kind == GemArt.Gelo) rot = t * 300f + k * 40f;
+            if (Kind == GemArt.Caos) { rot = 12f * MathF.Sin(t * 3f + k); sz = unit * 0.36f * (1f - 0.35f * q); }
+            if (Kind == GemArt.Luz && HolyFlame.Length > 0) { rot = 0f; sz *= 1.8f; }   // chamas sempre para cima
+            o.Add(new Spr(KillTex(k + (int)(t * 12f) * (Kind == GemArt.Luz ? 1 : 0)), x, y, sz, sz * (Kind == GemArt.Luz ? 1.4f : 1f), rot, a));
+            if (Kind == GemArt.Caos && Halo >= 0) o.Add(new Spr(Halo, x, y, sz * 1.5f, sz * 1.5f, 0, a * 0.35f));
+        }
+        if (p < 0.4f && Halo >= 0) o.Add(new Spr(Halo, fx, fy, unit * (0.8f + p * 2f), unit * (0.8f + p * 2f), 0, (1f - p / 0.4f) * 0.7f));
+    }
+
+    /// <summary>A joia absorvendo o abate, do jeito de cada elemento.</summary>
+    void KillAbsorb(float a, float t, float gx, float gy, float cy, List<Spr> o)
+    {
+        float L = KillAbsorbLen;
+        if (a >= L) return;
+        float q = a / L, f = 1f - q;
+        float ring = 2.2f - 1.4f * MathF.Sqrt(q);
+        if (Halo >= 0 && Kind != GemArt.Luz) o.Add(new Spr(Halo, gx, gy, 1.4f + 0.6f * f, 1.4f + 0.6f * f, 0, f * f * (Kind == GemArt.Sangue ? 0f : Kind == GemArt.Corrompida ? 0.35f : 1f)));
+        switch (Kind)
+        {
+            case GemArt.Sangue:   // veias e poça acendem atrás da joia (ver Frame); aqui só o redemoinho
+                // Redemoinho de sangue girando para dentro da pedra.
+                if (KillCap >= 0 && q < 0.6f)
+                    for (int k = 0; k < 10; k++)
+                    {
+                        float an = k / 10f * MathF.Tau + q * 9f, r = 0.55f * (1f - q / 0.6f) + 0.48f;
+                        { float w = 0.12f + 0.10f * GemArt.SmoothNoise(t * 5f + k * 3f, k); o.Add(new Spr(KillCap, MathF.Cos(an) * r, 0.03f + MathF.Sin(an) * r, w, w * 1.7f * (1f - q * 0.5f), an * 57.3f, 1f - q / 0.6f)); }
+                    }
+                break;
+            case GemArt.Corrompida:
+                if (BallGlow.Length > 0) o.Add(new Spr(BallGlow[0], 0, 0, 1f, 1f, 0, f));
+                if (KillCap >= 0 && q < 0.6f)
+                    for (int k = 0; k < 10; k++)
+                    {
+                        float an = k / 10f * MathF.Tau - q * 8f, r = 0.55f * (1f - q / 0.6f) + 0.48f;
+                        { float w = 0.13f + 0.10f * GemArt.SmoothNoise(t * 5f + k * 3f, k + 9); o.Add(new Spr(KillCap, MathF.Cos(an) * r, 0.03f + MathF.Sin(an) * r, w, w * 1.7f * (1f - q * 0.5f), an * 57.3f, 1f - q / 0.6f)); }
+                    }
+                break;
+            case GemArt.Gelo:
+                if (FrostRing >= 0) o.Add(new Spr(FrostRing, 0, 0.05f, ring, ring, t * 30f, f));
+                if (IceCrack.Length > 0) o.Add(new Spr(IceCrack[((int)(t * 0.3f) % IceHits) * 3 + 2], 0, 0, 1, 1, 0, f));
+                break;
+            case GemArt.Caos:
+                if (ChaosCrackNet >= 0) o.Add(new Spr(ChaosCrackNet, 0, 0, 1, 1, 0, f));
+                // As runas coletadas giram em volta da estrela, fechando o círculo, e somem nela.
+                for (int k = 0; k < KillRunes.Length; k++)
+                {
+                    float an = k / (float)KillRunes.Length * MathF.Tau + t * (1.5f + 4f * q);
+                    float r = 0.95f * (1f - q * q) + 0.05f;
+                    float sz = 0.30f * (1f - 0.6f * q);
+                    o.Add(new Spr(KillRunes[k], gx + MathF.Cos(an) * r, gy + MathF.Sin(an) * r, sz, sz, 0, Math.Min(1f, f * 1.6f)));
+                }
+                if (StarCore >= 0 && q > 0.7f) { float fl = (q - 0.7f) / 0.3f; o.Add(new Spr(StarCore, gx, gy, 0.6f + 1.4f * fl, 0.6f + 1.4f * fl, t * 60f, 1f - fl)); }
+                if (Shock >= 0 && q > 0.75f) { float fl = (q - 0.75f) / 0.25f; o.Add(new Spr(Shock, gx, gy, 0.6f + 2f * fl, 0.6f + 2f * fl, 0, 1f - fl)); }
+                break;
+            case GemArt.Tempestade:
+                if (ERing >= 0) o.Add(new Spr(ERing, 0, 0.05f, ring, ring, t * 50f, f));
+                if (BoltCore >= 0) o.Add(new Spr(BoltCore, gx, gy, 1f, 1f, 0, f));
+                break;
+            case GemArt.Luz when LuzKillMode == 4 && KillRunes.Length > 0:
+            {
+                // As runas giram e entram na pedra (primeiro segundo); aí a joia pega fogo sagrado.
+                float qr = Math.Clamp(a / 1.0f, 0f, 1f), fr2 = 1f - qr;
+                for (int k = 0; k < KillRunes.Length && qr < 1f; k++)
+                {
+                    float an = k / (float)KillRunes.Length * MathF.Tau - t * (0.8f + 2.5f * qr);
+                    float r = 1.0f * (1f - qr * qr) + 0.08f, sz = 0.50f * (1f - 0.55f * qr);
+                    o.Add(new Spr(KillRunes[k], gx + MathF.Cos(an) * r, gy + MathF.Sin(an) * r, sz, sz, 0, Math.Min(1f, fr2 * 1.6f)));
+                }
+                HolyFireFront(a, t, gx, gy, o);
+                break;
+            }
+            case GemArt.Luz:
+                // Plasma de luz envolvendo a pedra e sendo bebido por ela: clarão branco e borda arco-íris.
+                if (Halo >= 0) o.Add(new Spr(Halo, gx, gy, 1.5f + 0.8f * f, 1.5f + 0.8f * f, 0, f * 0.9f));
+                if (KillStreak >= 0 && q < 0.7f)
+                    for (int k = 0; k < 18; k++)
+                    {
+                        // Anel de luz prismática girando em volta da pedra e fechando nela.
+                        float an = k / 18f * MathF.Tau + q * 8f;
+                        float r = 0.55f * (1f - q / 0.7f) + 0.50f;
+                        o.Add(new Spr((k & 1) == 0 || KillStreak2 < 0 ? KillStreak : KillStreak2, gx + MathF.Cos(an) * r, gy + MathF.Sin(an) * r, 0.16f, r * 0.42f, an * 57.3f, 1f - q / 0.7f));
+                    }
+                if (LuzBeam >= 0 && q > 0.5f)
+                {
+                    float fl = (q - 0.5f) / 0.5f;
+                    for (int k = 0; k < 8; k++)
+                    {
+                        float ang = k * 45f + t * 30f, rad = (ang + 90f) * MathF.PI / 180f, len = 0.6f + 1.4f * fl;
+                        o.Add(new Spr(LuzBeam, gx + MathF.Cos(rad) * len * 0.5f, gy + MathF.Sin(rad) * len * 0.5f, 0.28f, len, ang, (1f - fl) * 0.8f));
+                    }
+                }
+                break;
+        }
+    }
+
+    /// <summary>Ao ligar a Corrente: a gosma espirra em gotas para todos os lados e é puxada de volta para a bola.</summary>
+    void GooSplash(float e, float t, int level, float gx, float gy, List<Spr> o)
+    {
+        int li = Math.Clamp(level, 0, 7);
+        if (_prevE[li] < 0.02f && e >= 0.02f && t > _prevT[li]) _burstAt[li] = t;
+        _prevT[li] = t; _prevE[li] = e;
+        float p = (t - _burstAt[li]) / 1.5f;
+        if (p < 0f || p > 1f || e < 0.01f) return;
+        // Sai rápido, para no ar e volta acelerando (como elástico).
+        float out1 = p < 0.35f ? 1f - Sq(1f - p / 0.35f) : p < 0.5f ? 1f : 1f - Sq((p - 0.5f) / 0.5f);
+        for (int k = 0; k < 16; k++)
+        {
+            float a = k / 16f * MathF.Tau + Hash(k * 7) * 0.35f;
+            float r = 0.42f + (0.55f + 0.45f * Hash(k * 3)) * out1;
+            float x = MathF.Cos(a) * r, y = 0.03f + MathF.Sin(a) * r;
+            bool back = p > 0.5f;
+            float rot = (a * 57.3f) + (back ? 90f : -90f);        // ponta da gota para trás do movimento
+            float st = 1f + 0.6f * (p < 0.35f || back ? 1f : 0f);  // estica em movimento
+            float sz = (0.10f + 0.07f * Hash(k * 11)) * (0.6f + 0.4f * out1);
+            o.Add(new Spr(GooBlob, x, y, sz, sz * st, rot, 1f));
+            // Fio ligando a gota à bola (gosma elástica).
+            if (out1 > 0.15f) Strand(GooStrand.Length > 0 ? GooStrand[3] : GooBlob, MathF.Cos(a) * 0.40f, 0.03f + MathF.Sin(a) * 0.40f, x, y, 0.05f * (1f - out1 * 0.6f), Math.Min(1f, out1 * 1.5f), o);
+        }
+    }
+
+    /// <summary>Ao ligar a Corrente: clarão de sol — feixes de luz saindo em leque e girando, com um flash.</summary>
+    void SunFlare(float e, float t, int level, float gx, float gy, List<Spr> o)
+    {
+        int li = Math.Clamp(level, 0, 7);
+        if (_prevE[li] < 0.02f && e >= 0.02f && t > _prevT[li]) _burstAt[li] = t;
+        _prevT[li] = t; _prevE[li] = e;
+        float p = (t - _burstAt[li]) / 1.1f;
+        if (p < 0f || p > 1f || e < 0.01f) return;
+        float q = 1f - (1f - p) * (1f - p);
+        o.Add(new Spr(Halo, gx, gy, 1.2f + 1.6f * q, 1.2f + 1.6f * q, 0, (1f - p) * (1f - p)));
+        for (int k = 0; k < 12; k++)
+        {
+            float ang = k / 12f * 360f + 25f * q;
+            float len = (0.9f + 0.9f * (k % 2 == 0 ? 1f : 0.6f)) * (0.3f + 0.7f * q);
+            float rad = (ang + 90f) * MathF.PI / 180f;
+            o.Add(new Spr(LuzBeam, gx + MathF.Cos(rad) * len * 0.5f, gy + MathF.Sin(rad) * len * 0.5f, 0.35f, len, ang, (1f - p) * 0.9f));
+        }
+    }
+
+    /// <summary>
+    /// Lendária da Luz: auréola de diamantes atrás da pedra, sempre presente. Encaixada gira devagar e brilha
+    /// pouco; ativa acelera e cada diamante cintila.
+    /// </summary>
+    void DiamondHalo(float e, float t, float cy, List<Spr> o)
+    {
+        // A mandala de sempre fica de pé mesmo encaixada (mais fraca, girando devagar); ativa, o desenho
+        // normal da Lendária assume. Diamantes pequenos cravados no anel externo, girando com ela.
+        float rot = t * 6f;
+        if (e < 0.999f) o.Add(new Spr(M4, 0, 0, 2.35f, 2.35f, rot, (1f - e) * 0.55f));
+        const int N = 12;
+        for (int k = 0; k < N; k++)
+        {
+            float a = (rot * MathF.PI / 180f) + k * MathF.Tau / N;
+            float x = MathF.Cos(a) * 1.10f, y = cy * e + MathF.Sin(a) * 1.10f;
+            float tw = 0.5f + 0.5f * MathF.Sin(t * 3f + k * 1.7f);
+            float sz = 0.13f + 0.02f * tw * e;
+            o.Add(new Spr(HaloGem, x, y, sz, sz, a * 57.3f, 0.75f + 0.25f * e));
+            if (e > 0.01f && tw > 0.85f) o.Add(new Spr(Particle, x, y, 0.18f * (tw - 0.85f) / 0.15f, 0.18f * (tw - 0.85f) / 0.15f, 0, e));
+        }
+    }
+
+
+    /// <summary>Ao ligar a Corrente: respingo de sangue — gotas 3D voando da pedra e caindo, e um anel vermelho se abrindo.</summary>
+    void BloodBurst(float e, float t, int level, float gx, float gy, List<Spr> o)
+    {
+        int li = Math.Clamp(level, 0, 7);
+        if (_prevE[li] < 0.02f && e >= 0.02f && t > _prevT[li]) _burstAt[li] = t;
+        _prevT[li] = t; _prevE[li] = e;
+        float p = (t - _burstAt[li]) / 1.2f;
+        if (p < 0f || p > 1f || e < 0.01f) return;
+        float q = 1f - (1f - p) * (1f - p);
+        float rs = 0.9f + 1.6f * q;
+        o.Add(new Spr(BloodRing, 0, 0.05f, rs, rs * 0.92f, 0, (1f - p) * 0.9f));
+        for (int k = 0; k < 18; k++)
+        {
+            float a = Hash(k * 13) * MathF.PI * 0.9f + 0.05f * MathF.PI;          // mais para cima e para os lados
+            float v = 1.1f + 0.9f * Hash(k * 7);
+            float tt = p * 1.2f;
+            float x = MathF.Cos(a) * v * tt * 0.9f, y = 0.05f + MathF.Sin(a) * v * tt - 1.6f * tt * tt;
+            float vx = MathF.Cos(a) * v, vy = MathF.Sin(a) * v - 3.2f * tt;
+            float rot = MathF.Atan2(-vx, -vy) * 180f / MathF.PI;                 // ponta da gota para trás do movimento
+            float sz = (0.08f + 0.07f * Hash(k * 3)) * (1f - 0.3f * p);
+            o.Add(new Spr(Particle, gx * 0f + x, y, sz * 0.8f, sz, rot, Math.Min(1f, (1f - p) * 1.8f)));
+        }
+    }
+
+    void StormLegendBack(float e, float t, float cy, List<Spr> o)
+    {
+        switch (StormLegend)
+        {
+            case 1: RunePillars(e, t, cy, o); break;
+            case 2: StormCloud(e, t, cy, o); break;
+            case 3: OrbitCrystals(e, t, cy, false, o); break;
+            case 4: LightningWings(e, t, cy, o); break;
+            case 5: TechWings(e, t, cy, o); OrbitCrystals(e, t, cy, false, o); break;
+            default: TeslaCoils(e, t, cy, o); break;
+        }
+    }
+
+    void StormLegendFront(float e, float t, float cy, List<Spr> o)
+    {
+        if (StormLegend == 3 || StormLegend == 5) OrbitCrystals(e, t, cy, true, o);
+        if (StormLegend == 5) WingStrikes(e, t, cy, o);
+    }
+
+    /// <summary>Dois obeliscos de pedra com runas que acendem subindo; do topo salta um raio até o globo.</summary>
+    void RunePillars(float e, float t, float cy, List<Spr> o)
+    {
+        var (c, _, _) = Storm(t, e);
+        int fr = (int)MathF.Floor(t * 14f);
+        for (int sd = -1; sd <= 1; sd += 2)
+        {
+            float px = sd * 0.92f, py = 0.05f;
+            o.Add(new Spr(Pillar3D, px, py, 0.62f, 1.55f, 0, 1f));
+            float up = t * (0.4f + 0.8f * e + 2f * c) + (sd > 0 ? 0.5f : 0f);
+            for (int k = 0; k < 4; k++)
+            {
+                float ph = up - k * 0.22f; ph -= MathF.Floor(ph);
+                float ga = MathF.Max(0f, 1f - ph * 2.0f);
+                float a = (0.25f + 0.75f * e) * (0.25f + 0.75f * ga);
+                o.Add(new Spr(PillarRunes[k], px, py - 0.42f + k * 0.26f, 0.17f, 0.17f, 0, a));
+            }
+            float tx = px, ty = py + 0.80f;
+            if (e > 0.01f) Strike(tx, ty, sd * 0.40f, 0.25f, 0.18f + 0.08f * c, fr + (sd > 0 ? 7 : 0), e * (0.7f + 0.3f * MathF.Sin(t * 20f + sd)), o);
+            else if (Hash(fr * 3 + sd) < 0.10f) Strike(tx, ty, tx + sd * 0.12f, ty + 0.15f, 0.08f, fr, 0.7f, o);
+        }
+    }
+
+    /// <summary>Nuvem de tempestade 3D em cima da pedra, piscando por dentro; na descarga o raio cai dela na joia.</summary>
+    void StormCloud(float e, float t, float cy, List<Spr> o)
+    {
+        var (c, st, cyc) = Storm(t, e);
+        int fr = (int)MathF.Floor(t * 14f);
+        float bob = 0.03f * MathF.Sin(t * 0.8f);
+        float cx0 = 0.04f * MathF.Sin(t * 0.37f), cy0 = 1.02f + bob + 0.10f * e;
+        o.Add(new Spr(Cloud3D, cx0, cy0, 1.9f, 1.9f, 0, 1f));
+        // Clarões por dentro (mais com a carga), atrás da nuvem.
+        for (int k = 0; k < 3; k++)
+        {
+            float u = t * (1.3f + 2f * c) + k * 0.37f; int cyc2 = (int)MathF.Floor(u); u -= cyc2;
+            if (Hash(cyc2 * 7 + k) > 0.25f + 0.6f * c + 0.3f * e) continue;
+            float fx = cx0 + (Hash(cyc2 * 11 + k) - 0.5f) * 1.0f, fy = cy0 + (Hash(cyc2 * 5 + k) - 0.5f) * 0.25f;
+            float a = MathF.Sin(MathF.PI * u) * (u < 0.5f ? 1f : (0.6f + 0.4f * MathF.Sin(t * 60f)));
+            o.Add(new Spr(CloudFlash, fx, fy, 0.7f, 0.5f, 0, Math.Min(1f, a)));
+        }
+        if (st >= 0f) Strike(cx0 + 0.1f, cy0 - 0.25f, 0.05f, 0.40f, 0.30f, fr, 1f - st, o);
+        else if (e > 0.01f && Hash(fr * 13) < 0.08f + 0.2f * c) Strike(cx0 - 0.3f, cy0 - 0.2f, cx0 - 0.45f + Hash(fr) * 0.3f, cy0 - 0.65f, 0.14f, fr, 0.8f, o);
+    }
+
+    /// <summary>Quatro cristais de citrino orbitando a pedra, ligados por arcos elétricos que formam um anel.</summary>
+    void OrbitCrystals(float e, float t, float cy, bool front, List<Spr> o)
+    {
+        int fr = (int)MathF.Floor(t * 14f);
+        const int N = 4;
+        Span<float> xs = stackalloc float[N], ys = stackalloc float[N], zs = stackalloc float[N];
+        float spd = 0.25f + 0.55f * e;
+        for (int k = 0; k < N; k++)
+        {
+            float a = t * spd + k * MathF.Tau / N;
+            xs[k] = MathF.Cos(a) * 0.95f; zs[k] = MathF.Sin(a); ys[k] = cy + 0.08f - zs[k] * 0.22f + 0.05f * MathF.Sin(t * 1.7f + k);
+        }
+        // Arcos entre vizinhos (atrás quando os dois estão atrás).
+        for (int k = 0; k < N; k++)
+        {
+            int j = (k + 1) % N;
+            bool fr2 = zs[k] + zs[j] < 0f;
+            if (fr2 != front) continue;
+            float a = e > 0.01f ? e * (0.6f + 0.4f * MathF.Sin(t * 25f + k)) : (Hash(fr * 5 + k) < 0.08f ? 0.6f : 0f);
+            if (a > 0f) Strike(xs[k], ys[k], xs[j], ys[j], 0.14f, fr + k, a, o);
+        }
+        for (int k = 0; k < N; k++)
+        {
+            if ((zs[k] < 0f) != front) continue;
+            float sc = 0.34f * (0.85f - 0.15f * zs[k]);
+            o.Add(new Spr(OrbitCrystal, xs[k], ys[k], sc, sc, 15f * MathF.Sin(t + k) + t * 30f * (0.2f + e), front ? 1f : 0.85f));
+            if (e > 0.01f) o.Add(new Spr(CloudFlash, xs[k], ys[k], sc * 1.4f, sc * 1.4f, 0, e * 0.35f));
+        }
+    }
+
+    // ───── Asas mecânicas para-raios (asa de anjo de metal) ─────
+    const float WingScale = 2.0f;                                                 // tamanho do sprite: meia-largura = 1.0 no mundo
+    internal const int WPoses = 24;
+
+    /// <summary>
+    /// Esqueleto da asa de morcego para uma abertura (0 fechada .. 1 aberta): [0] ombro, [1] cotovelo, [2] pulso,
+    /// [3] ponta do polegar (para-raios), [4..7] pontas dos quatro dedos, [8] ponto do corpo onde a membrana prende.
+    /// </summary>
+    static V3[] BatWingBones(float open)
+    {
+        float D(float d) => d * MathF.PI / 180f;
+        float a1 = D(25f + 35f * open), a2 = a1 - D(120f - 95f * open);
+        var p0 = V3.Zero;
+        var p1 = p0 + new V3(MathF.Cos(a1), MathF.Sin(a1), 0) * 0.30f;
+        var p2 = p1 + new V3(MathF.Cos(a2), MathF.Sin(a2), 0) * 0.40f;
+        var r = new V3[9];
+        r[0] = p0; r[1] = p1; r[2] = p2;
+        r[3] = p2 + new V3(MathF.Cos(a2 + D(80f)), MathF.Sin(a2 + D(80f)), 0) * 0.14f;
+        float[] off = { 55f, 20f, -15f, -50f }, len = { 0.50f, 0.66f, 0.62f, 0.52f };
+        float spread = 0.25f + 0.75f * open, lk = 0.55f + 0.45f * open;
+        for (int f = 0; f < 4; f++)
+        {
+            float a = a2 + D(off[f] * spread - 40f * (1f - open));
+            r[4 + f] = p2 + new V3(MathF.Cos(a), MathF.Sin(a), 0) * len[f] * lk;
+        }
+        r[8] = new V3(0.06f, -0.38f, 0f);
+        return r;
+    }
+
+    /// <summary>Asa de morcego de metal: ossos dourados (cor do citrino), membrana de metal azul-escuro (cor do globo) com borda recortada, para-raios no polegar.</summary>
+    internal static float[] TechWing3D(int side, float open)
+    {
+        Gem3D.Mesh X(Gem3D.Mesh m, System.Numerics.Matrix4x4 M) { var r = new Gem3D.Mesh(); foreach (var v in m.V) r.V.Add(V3.Transform(v, M)); foreach (var f in m.F) r.F.Add(f); return r; }
+        var b = BatWingBones(open);
+        var mem = new Gem3D.Mesh();
+        void Tri(V3 a, V3 c, V3 d) { int i = mem.V.Count; mem.V.Add(a); mem.V.Add(c); mem.V.Add(d); mem.F.Add((i, i + 1, i + 2, 0)); }
+        // Membrana em gomos entre os dedos, cada gomo com a borda puxada para dentro (recorte de asa de morcego).
+        var chain = new List<V3> { b[4], b[5], b[6], b[7], b[8] };
+        var anchor = new List<V3> { b[2], b[2], b[2], b[1], b[0] };
+        for (int i = 0; i < chain.Count - 1; i++)
+        {
+            var A = chain[i]; var B = chain[i + 1];
+            var piv = i < 3 ? b[2] : V3.Lerp(b[1], b[0], 0.3f);
+            var mid = V3.Lerp((A + B) * 0.5f, piv, 0.22f) + new V3(0, 0, -0.03f);
+            Tri(piv, A, mid); Tri(piv, mid, B);
+            if (i == 3) { Tri(b[2], b[1], A); Tri(b[1], b[0], B); Tri(b[1], B, A); }
+        }
+        Tri(b[2], b[4], b[3]);   // pedaço entre o polegar e o primeiro dedo
+        var bones = new List<(Gem3D.Mesh, V3, float)>();
+        bones.Add((Gem3D.Tube(new List<V3> { b[0], b[1], b[2] }, u => 0.040f - 0.012f * u, 10), V3.Zero, 1f));
+        for (int f = 0; f < 4; f++) bones.Add((Gem3D.Tube(new List<V3> { b[2], b[4 + f] }, u => 0.024f * (1f - 0.7f * u), 8), V3.Zero, 1f));
+        for (int k = 0; k < 3; k++) bones.Add((Gem3D.Ellipsoid(new V3(0.05f, 0.05f, 0.05f), 12, 8), b[k], 1f));
+        // Polegar: garra que é o para-raios.
+        bones.Add((Gem3D.Tube(new List<V3> { b[2], b[3] }, u => 0.022f * (1f - 0.8f * u), 8), V3.Zero, 1f));
+        bones.Add((Gem3D.Ellipsoid(new V3(0.032f, 0.032f, 0.032f), 10, 6), b[3], 1f));
+        var turn = System.Numerics.Matrix4x4.CreateRotationY(0.30f) * System.Numerics.Matrix4x4.CreateScale(side, 1f, 1f);
+        var gold = new Gem3D.GemMat { Base = new V3(1.0f, 0.74f, 0.22f), Metal = true, Edges = false };
+        var blue = new Gem3D.GemMat { Base = new V3(0.22f, 0.30f, 0.72f), Metal = true, Edges = false };
+        const float fit = 0.5f;
+        var M = Gem3D.Render(X(mem, turn), 0f, 0f, 256, blue, fit);
+        // Veias de energia acesas na membrana (linhas do pulso para a borda).
+        var B2 = Gem3D.Render(X(Gem3D.Merge(bones.ToArray()), turn), 0f, 0f, 256, gold, fit);
+        return Gem3D.Over(M, B2);
+    }
+
+    /// <summary>Ponta do para-raios (k = 3 polegar, 4 primeiro dedo) no mundo, relativa ao ombro.</summary>
+    static (float x, float y) WingTip(int side, int k, float open)
+    {
+        var p = BatWingBones(open)[k];
+        var q = V3.Transform(p, System.Numerics.Matrix4x4.CreateRotationY(0.30f));
+        float s = WingScale * 0.5f;   // fit 0.5: 1 unidade do mesh = metade da meia-largura do sprite
+        return (side * q.X * s, q.Y * s);
+    }
+
+    float WingOpen(float e, float t)
+    {
+        // Encaixada: meio aberta, respirando; ativa: bate forte, de quase fechada a toda aberta.
+        float ph = t * (1.2f + 1.5f * e);
+        float flap = 0.5f + 0.5f * MathF.Sin(ph + 0.35f * MathF.Sin(ph));   // desce um pouco mais rápido que sobe, sem trancos
+        return Clamp01(0.72f + 0.10f * (flap - 0.5f) + e * (-0.62f + 0.90f * flap));
+    }
+
+    /// <summary>Asas de metal atrás da pedra: abrem e batem; o sprite também gira no ombro para o bater ficar amplo.</summary>
+    void TechWings(float e, float t, float cy, List<Spr> o)
+    {
+        float op = WingOpen(e, t);
+        float fp = op * (WPoses - 1); int f0 = Math.Min(WPoses - 2, (int)fp); float fr = fp - f0;
+        float sw = (op - 0.5f) * 40f;
+        for (int sd = -1; sd <= 1; sd += 2)
+        {
+            // Duas poses vizinhas misturadas: movimento contínuo, sem degraus.
+            var tex = sd < 0 ? WingL3 : WingR3;
+            o.Add(new Spr(tex[f0], sd * 0.22f, cy + 0.12f, WingScale * 2f, WingScale * 2f, -sd * sw, 1f));
+            o.Add(new Spr(tex[f0 + 1], sd * 0.22f, cy + 0.12f, WingScale * 2f, WingScale * 2f, -sd * sw, fr));
+        }
+    }
+
+    /// <summary>Para-raios: raios caem do céu nas hastes; a energia corre pelo osso até o ombro e salta para o globo.</summary>
+    void WingStrikes(float e, float t, float cy, List<Spr> o)
+    {
+        float op = WingOpen(e, t);
+        float opq = op;
+        float sw = (op - 0.5f) * 40f;
+        for (int lane = 0; lane < 3; lane++)
+        {
+            float per = 1.3f + 0.5f * lane - 0.5f * e;
+            float u = t / per + lane * 0.41f; int cyc = (int)MathF.Floor(u); u -= cyc;
+            if (Hash(cyc * 7 + lane * 13) > (e > 0.01f ? 0.85f : 0.20f)) continue;
+            int sd = Hash(cyc * 3 + lane) < 0.5f ? -1 : 1, k = Hash(cyc * 11 + lane * 5) < 0.6f ? 3 : 4;
+            var (wx, wy) = WingTip(sd, k, opq);
+            float rr = -sd * sw * MathF.PI / 180f, cr = MathF.Cos(rr), sr = MathF.Sin(rr);
+            float rx = wx * cr - wy * sr, ry = wx * sr + wy * cr;
+            float sx = sd * 0.22f, sy = cy + 0.12f;
+            float tx = sx + rx, ty = sy + ry;
+            int fr = (int)MathF.Floor(t * 20f) + lane * 5;
+            float kk = Math.Max(0.6f, e);
+            if (u < 0.18f)
+            {
+                float a = 1f - u / 0.18f;
+                Strike(tx + (Hash(cyc + lane) - 0.5f) * 0.5f, ty + 0.9f, tx, ty, 0.24f, fr, kk * a, o);
+                o.Add(new Spr(CloudFlash, tx, ty, 0.30f, 0.30f, 0, kk * a));
+            }
+            else if (u < 0.45f)
+            {
+                float q = (u - 0.18f) / 0.27f;
+                o.Add(new Spr(CloudFlash, tx + (sx - tx) * q, ty + (sy - ty) * q, 0.22f, 0.22f, 0, kk));
+            }
+            else if (u < 0.58f && e > 0.01f)
+            {
+                float a = 1f - (u - 0.45f) / 0.13f;
+                Strike(sx, sy, sd * 0.10f, 0.15f, 0.16f, fr + 3, e * a, o);
+            }
+        }
+    }
+
+    /// <summary>Asas de relâmpago saindo de trás da pedra: raios ramificados em leque, batendo e estalando.</summary>
+    void LightningWings(float e, float t, float cy, List<Spr> o)
+    {
+        int fr = (int)MathF.Floor(t * 18f);
+        float flap = MathF.Sin(t * (1.6f + 1.4f * e));
+        float open = 0.35f + 0.65f * e;
+        for (int sd = -1; sd <= 1; sd += 2)
+        {
+            float sx = sd * 0.28f, sy = cy + 0.25f;
+            for (int k = 0; k < 6; k++)
+            {
+                float ang = (100f - k * 26f + 12f * flap) * open + (1f - open) * -60f;   // fechadas: caídas para baixo
+                float rad = ang * MathF.PI / 180f;
+                float len = (0.75f + 0.45f * MathF.Sin(k * 0.55f + 0.3f)) * (0.6f + 0.4f * open);
+                float ex = sx + sd * MathF.Cos(rad) * len, ey = sy + MathF.Sin(rad) * len;
+                float a = (0.45f + 0.55f * e) * (0.75f + 0.25f * Hash(fr * 3 + k + sd * 11));
+                Strike(sx, sy, ex, ey, 0.20f - k * 0.015f, fr + k * 3 + (sd > 0 ? 17 : 0), a, o);
+                // Membrana: arco ligando a ponta à próxima.
+                if (k < 5)
+                {
+                    float rad2 = ((100f - (k + 1) * 26f + 12f * flap) * open + (1f - open) * -60f) * MathF.PI / 180f;
+                    float len2 = (0.75f + 0.45f * MathF.Sin((k + 1) * 0.55f + 0.3f)) * (0.6f + 0.4f * open) * 0.75f;
+                    float mx = sx + sd * MathF.Cos(rad) * len * 0.75f, my = sy + MathF.Sin(rad) * len * 0.75f;
+                    float nx = sx + sd * MathF.Cos(rad2) * len2, ny = sy + MathF.Sin(rad2) * len2;
+                    if (Hash(fr * 7 + k + sd) < 0.5f + 0.4f * e) Strike(mx, my, nx, ny, 0.10f, fr + k, a * 0.7f, o);
+                }
+            }
+            o.Add(new Spr(CloudFlash, sx, sy, 0.45f, 0.45f, 0, 0.5f + 0.4f * e));
+        }
+    }
+
+    /// <summary>Ao ligar a Corrente: clarão, anel elétrico se espalhando e seis raios saindo da pedra para fora.</summary>
+    void StormBurst(float e, float t, int level, float gx, float gy, List<Spr> o)
+    {
+        int li = Math.Clamp(level, 0, 7);
+        if (_prevE[li] < 0.02f && e >= 0.02f && t > _prevT[li]) _burstAt[li] = t;   // só ao ligar de verdade (não no mesmo quadro)
+        _prevT[li] = t;
+        _prevE[li] = e;
+        float p = (t - _burstAt[li]) / 0.9f;
+        if (p < 0f || p > 1f || e < 0.01f) return;
+        float q = 1f - (1f - p) * (1f - p);
+        o.Add(new Spr(Halo, 0, 0.05f, 1.5f + 1.2f * q, 1.5f + 1.2f * q, 0, (1f - p) * (1f - p)));
+        float rs = 0.8f + 2.4f * q;
+        o.Add(new Spr(ERing, 0, 0.05f, rs, rs, p * 40f, 1f - p));
+        if (p < 0.45f)
+        {
+            int fr = (int)MathF.Floor(t * 20f);
+            float a = 1f - p / 0.45f;
+            for (int k = 0; k < 6; k++)
+            {
+                float ang = k / 6f * MathF.Tau + 0.3f + Hash(k * 7) * 0.3f;
+                float r0 = 0.42f, r1 = 0.42f + 0.95f * Math.Min(1f, p / 0.2f);
+                Strike(MathF.Cos(ang) * r0, 0.05f + MathF.Sin(ang) * r0, MathF.Cos(ang) * r1, 0.05f + MathF.Sin(ang) * r1, 0.22f, fr + k, a, o);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Lendária do Caos: buraco negro atrás da pedra, sempre presente. Encaixada ele fica menor e girando devagar;
+    /// ativa cresce, o disco acelera, e quando a estrela tenta escapar ele se abre ainda mais.
+    /// </summary>
+    void BlackHole(float e, float t, float cy, List<Spr> o)
+    {
+        float esc = Clamp01(_esc * 1.6f);
+        float hs = 2.15f + 0.45f * e + 0.4f * esc;
+        float dp = t * (0.12f + 0.25f * e + 0.6f * esc); dp -= MathF.Floor(dp);
+        float fp = dp * DiskBack.Length; int d0 = (int)fp % DiskBack.Length, d1 = (d0 + 1) % DiskBack.Length;
+        float a = 0.75f + 0.25f * e;
+        float hy = cy + 0.10f * e;
+        o.Add(new Spr(Halo, 0, hy, hs * 1.1f, hs * 1.1f, 0, 0.25f + 0.35f * e));
+        o.Add(new Spr(HoleTex, 0, hy, hs * 0.98f, hs * 0.98f, 0, a));
+        o.Add(new Spr(DiskBack[d0], 0, hy, hs, hs, -12f, a * (1f - (fp - MathF.Floor(fp)))));
+        o.Add(new Spr(DiskBack[d1], 0, hy, hs, hs, -12f, a * (fp - MathF.Floor(fp))));
+    }
+
+    /// <summary>
+    /// Implosão ao ligar a Corrente: a energia em volta é sugada para dentro da estrela (pontos roxos correndo em
+    /// espiral para o centro) e, ao chegar, solta uma onda de choque roxa com um clarão.
+    /// </summary>
+    void ChaosImplode(float e, float t, int level, float gx, float gy, List<Spr> o)
+    {
+        int li = Math.Clamp(level, 0, 7);
+        if (_prevE[li] < 0.02f && e >= 0.02f && t > _prevT[li]) _burstAt[li] = t;   // só ao ligar de verdade (não no mesmo quadro)
+        _prevT[li] = t;
+        _prevE[li] = e;
+        float p = (t - _burstAt[li]) / 1.3f;
+        if (p < 0f || p > 1f) return;
+        if (p < 0.55f)
+        {
+            float q = p / 0.55f, qq = q * q;
+            for (int k = 0; k < 20; k++)
+            {
+                float a0 = k / 20f * MathF.Tau + Hash(k * 7) * 0.4f;
+                float r = (1.5f + 0.4f * Hash(k * 3)) * (1f - qq);
+                float a = a0 + qq * 2.2f;
+                float sz = 0.08f + 0.10f * qq;
+                o.Add(new Spr(ChainPulse, gx + MathF.Cos(a) * r, gy + MathF.Sin(a) * r, sz, sz, 0, Clamp01(q * 3f) * (1f - qq * 0.3f)));
+            }
+        }
+        else
+        {
+            float q = (p - 0.55f) / 0.45f, qo = 1f - (1f - q) * (1f - q);
+            float sz = 0.6f + 2.6f * qo;
+            o.Add(new Spr(Shock, gx, gy, sz, sz, 0, (1f - q)));
+            o.Add(new Spr(StarCore, gx, gy, 1.4f * (1f - q * 0.5f), 1.4f * (1f - q * 0.5f), t * 40f, (1f - q) * (1f - q)));
+        }
+    }
+
+    /// <summary>Pulso da batida de asa do morcego de cristal (pico quando as asas fecham), só com a Corrente ativa.</summary>
+    static float WingBeat(float t, float e)
+    {
+        float ph = t * 3.4f / MathF.Tau; ph -= MathF.Floor(ph);
+        return e * MathF.Exp(-Sq((ph - 0.5f) / 0.09f));
+    }
+
+    /// <summary>
+    /// Lendária: bando de morceguinhos de cristal voando em volta da pedra numa órbita inclinada, cada um batendo
+    /// as asas no seu tempo. front = só os que estão passando na frente da pedra (os de trás vão antes dela).
+    /// </summary>
+    void BatSwarm(float e, float t, float cy, bool front, List<Spr> o)
+    {
+        const int N = 6;
+        for (int k = 0; k < N; k++)
+        {
+            float sp = 0.9f + 0.25f * Hash(k * 7);
+            float ang = t * 0.55f * sp + k * MathF.Tau / N + 0.3f * MathF.Sin(t * 0.7f + k);
+            float depth = MathF.Sin(ang);                       // > 0: na frente
+            if ((depth > 0f) != front) continue;
+            float rx = 1.05f + 0.08f * MathF.Sin(t * 0.9f + k * 2f), ry = 0.42f;
+            float x = MathF.Cos(ang) * rx, y = cy + 0.15f + depth * ry * -0.35f + MathF.Sin(ang * 2f + k) * 0.10f + MathF.Cos(ang) * 0.18f;
+            float sc = 0.46f * (0.80f + 0.20f * depth);
+            float fl = 0.5f - 0.5f * MathF.Cos(t * (6.5f + k * 0.7f) + k * 1.3f);
+            int fi = Math.Clamp((int)MathF.Round((1f - 0.6f * fl) * (CBat.Length - 1)), 0, CBat.Length - 1);
+            float tilt = -MathF.Sin(ang) * 0f + MathF.Cos(ang) * 12f;
+            o.Add(new Spr(CBat[fi], x, y, sc, sc, tilt, e * (front ? 1f : 0.75f)));
+        }
+    }
+
+    /// <summary>
+    /// Energia presa na pedra de gelo: um brilho rondando lá dentro, trincas antigas apagadas que reacendem de leve,
+    /// e de tempos em tempos (sem ritmo certo) a energia corre para um ponto, bate na casca e abre uma rede de
+    /// trincas acesas que se espalha, pulsa e vai fechando/apagando.
+    /// </summary>
+    void IceEnergy(float e, float t, List<Spr> o)
+    {
+        float k = 0.75f + 0.25f * e;
+        o.Add(new Spr(IceCore, 0, 0, 1, 1, 0, k * (0.45f + 0.35f * GemArt.SmoothNoise(t * 1.3f, 4))));
+        o.Add(new Spr(IceDormant, 0, 0, 1, 1, 0, k * (0.25f + 0.35f * GemArt.SmoothNoise(t * 0.9f, 8))));
+        // Dois "eventos" independentes e lentos, cada um com seu tempo: a trinca abre aos poucos, fica acesa
+        // (só respirando de leve) e vai apagando devagar. Sem clarão nem tremulação.
+        for (int lane = 0; lane < 2; lane++)
+        {
+            float per = (lane == 0 ? 5.2f : 7.3f) - 1.2f * e;
+            float u = t / per + lane * 0.5f; int cyc = (int)MathF.Floor(u); u -= cyc;
+            if (Hash(cyc * 11 + lane * 5 + 3) < 0.3f) continue;      // às vezes não acontece nada
+            int h = (int)(Hash(cyc * 17 + lane * 29) * IceHits) % IceHits;
+            float g = u / 0.18f * 3f;                                   // abre em 3 tempos, misturados
+            int st = Math.Min(2, (int)g);
+            float fadeIn = Math.Min(1f, u / 0.05f);
+            float fade = u < 0.55f ? 1f : Math.Max(0f, 1f - (u - 0.55f) / 0.40f);
+            float breathe = 0.85f + 0.15f * MathF.Sin(t * 1.8f + lane * 2f);
+            float a = k * fadeIn * fade * breathe;
+            o.Add(new Spr(IceCrack[h * 3 + st], 0, 0, 1, 1, 0, Math.Min(1f, a * (st < 2 ? 1f - (g - st) : 1f))));
+            if (st < 2) o.Add(new Spr(IceCrack[h * 3 + st + 1], 0, 0, 1, 1, 0, Math.Min(1f, a * (g - st))));
+        }
+    }
+
+    /// <summary>
+    /// Fios de gosma entre o olho e o encaixe: esticam e afinam quando o olho sobe, arrebentam
+    /// (a metade de cima encolhe para o olho, a de baixo cai na poça) e voltam a se formar.
+    /// </summary>
+    void GooStrands(float e, float t, float gx, float gy, float s, List<Spr> o)
+    {
+        float[] xo = { -0.13f, 0.02f, 0.14f }, per = { 3.4f, 4.3f, 3.8f }, ph = { 0.1f, 0.55f, 0.8f }, wd = { 0.10f, 0.13f, 0.09f };
+        for (int k = 0; k < 3; k++)
+        {
+            float tx = gx + xo[k] * s, ty = gy - 0.10f * s;                 // embaixo do olho
+            float bx = xo[k] * 0.85f, by = -0.06f + 0.02f * MathF.Sin(t * 1.3f + k);   // fundo do encaixe
+            // Ciclo: ligado afinando -> arrebenta -> pedaços se recolhem -> fio novo sobe da poça.
+            float u = t / per[k] + ph[k]; u -= MathF.Floor(u);
+            float stretch = Math.Clamp((ty - by) / 0.30f, 0f, 1.6f);
+            float wob = 0.012f * MathF.Sin(t * 2.7f + k * 2f);
+            if (u < 0.62f || e < 0.6f)
+            {
+                // Ligado: quanto mais esticado e mais perto de arrebentar, mais fino no meio.
+                float neckT = e < 0.6f ? stretch * 0.5f : 0.35f + 0.65f * (u / 0.62f);
+                int fi = Math.Clamp((int)(neckT * 5f + 0.5f), 0, 5) + (k == 1 ? 6 : 0);
+                Strand(GooStrand[fi], bx, by, tx + wob, ty, wd[k] / MathF.Sqrt(Math.Max(0.5f, stretch)), e, o);
+            }
+            else if (u < 0.86f)
+            {
+                // Arrebentou: cada metade encolhe para o seu lado, com a ponta em gota.
+                float q = (u - 0.62f) / 0.24f, len = (ty - by) * 0.5f * (1f - q * q);
+                if (len > 0.01f)
+                {
+                    Strand(GooDrip, tx, ty, tx + wob, ty - len, wd[k], e, o, true);
+                    Strand(GooDrip, bx, by, bx, by + len * 0.8f, wd[k] * 0.9f, e, o, true);
+                }
+            }
+            else
+            {
+                // Fio novo subindo da poça até alcançar o olho.
+                float q = (u - 0.86f) / 0.14f, q2 = q * q * (3f - 2f * q);
+                float hy = by + (ty - by) * q2;
+                if (q < 0.97f) Strand(GooDrip, bx, by, bx + (tx - bx) * q2, hy, wd[k] * 0.9f, e, o, true);
+                else Strand(GooStrand[2 + (k == 1 ? 6 : 0)], bx, by, tx + wob, ty, wd[k], e, o);
+            }
+        }
+    }
+
+    /// <summary>Desenha um fio da textura vertical esticado entre (ax, ay) e (bx, by).</summary>
+    static void Strand(int tex, float ax, float ay, float bx, float by, float w, float a, List<Spr> o, bool fromA = false)
+    {
+        float dx = bx - ax, dy = by - ay, len = MathF.Sqrt(dx * dx + dy * dy);
+        if (len < 0.005f) return;
+        // Textura em pé (base embaixo); para pedaços, a base grossa fica no ponto A.
+        float rot = MathF.Atan2(-dx, dy) * 180f / MathF.PI;
+        o.Add(new Spr(tex, (ax + bx) * 0.5f, (ay + by) * 0.5f, w / 0.44f, len * 1.06f, rot, a));
+    }
+
+    void LiveEye(float e, float t, float gx, float gy, float s, float breath, List<Spr> o, int part = 3)
+    {
+        if ((part & 1) != 0 && e > 0.001f)
         {
             int[] tex = { M4, M5, M6 };
             // Garra de tentáculos: dois descem até o fundo do buraco, dois abraçam as laterais do olho.
             float[] angs = { 150f, -150f, 72f, -72f };
             float[] lens = { 0.42f, 0.42f, 0.66f, 0.66f };
-            for (int k = 0; k < 4; k++)
+            for (int k = GooStrand.Length > 0 ? 2 : 0; k < 4; k++)   // 3D: os fios de gosma substituem os dois de baixo
             {
                 float baseAng = angs[k] + 7f * MathF.Sin(t * 2.1f + k * 1.9f) + 4f * MathF.Sin(t * 4.3f + k);
                 float len = lens[k] * e * (1f + 0.07f * MathF.Sin(t * 3f + k));
                 float ang = baseAng * MathF.PI / 180f;
                 float dx = -MathF.Sin(ang), dy = MathF.Cos(ang);
                 float bx = gx, by = gy - 0.06f;
-                o.Add(new Spr(tex[k % 3], bx + dx * len * 0.5f, by + dy * len * 0.5f, len * 0.85f, len, baseAng, e));
+                o.Add(new Spr(TentTex(k % 3, t + k * 0.37f, e), bx + dx * len * 0.5f, by + dy * len * 0.5f, len * 0.85f, len, baseAng, e));
             }
         }
+        if ((part & 2) == 0) return;
         // Para onde o olho olha: alvo novo a cada ~1,7 s, deslizando suave.
         float seg = t / 1.7f; int si = (int)MathF.Floor(seg); float f = seg - si;
         float sm = f < 0.22f ? Sq(f / 0.22f) * (3f - 2f * f / 0.22f) : 1f;
         float lx0 = (Hash(si * 7 + 1) - 0.5f) * 0.11f, ly0 = (Hash(si * 11 + 4) - 0.5f) * 0.03f;
         float lx1 = (Hash(si * 7 + 8) - 0.5f) * 0.11f, ly1 = (Hash(si * 11 + 11) - 0.5f) * 0.03f;
         float lx = (lx0 + (lx1 - lx0) * sm) * s, ly = (ly0 + (ly1 - ly0) * sm) * s;
+        if (EyeFrames.Length > 0)
+        {
+            // 3D: globo ocular de verdade (íris projetada na esfera), um pouco menor para a moldura lapidada aparecer.
+            float es = s * 0.90f;
+            float fx = Math.Clamp((lx / s / 0.055f + 1f) * 0.5f, 0f, 1f), fy = Math.Clamp((ly / s / 0.015f + 1f) * 0.5f, 0f, 1f);
+            int ix = (int)MathF.Round(fx * (EyeNX - 1)), iy = (int)MathF.Round(fy * (EyeNY - 1));
+            int b0 = ix * EyeNY + iy, half = EyeNX * EyeNY;
+            if (EyeGoo.Length > 0)
+            {
+                // Gosma escorrendo no branco do olho (a íris boia por cima).
+                float gp = t * (0.22f + 0.35f * e) + KillBoost(); gp -= MathF.Floor(gp);
+                float gpos = gp * EyeGoo.Length; int g0 = (int)gpos % EyeGoo.Length, g1 = (g0 + 1) % EyeGoo.Length;
+                o.Add(new Spr(EyeGoo[g0], gx, gy, es, es, 0, 1f));
+                o.Add(new Spr(EyeGoo[g1], gx, gy, es, es, 0, gpos - MathF.Floor(gpos)));
+            }
+            o.Add(new Spr(EyeFrames[b0], gx, gy, es, es, 0, 1f));
+            float sl = Math.Clamp(e * (1f + 0.25f * breath), 0f, 1f);
+            if (sl > 0.01f) o.Add(new Spr(EyeFrames[half + b0], gx, gy, es, es, 0, sl));
+            float lid3 = 0.55f * (1f - e);
+            float bu3 = t / 5.3f; bu3 -= MathF.Floor(bu3);
+            if (bu3 < 0.05f) lid3 = Math.Max(lid3, MathF.Sin(bu3 / 0.05f * MathF.PI));
+            int li3 = (int)MathF.Round(lid3 * (Lids.Length - 1));
+            if (li3 > 0) o.Add(new Spr(Lids[li3], gx, gy, es, es, 0, 1f));
+            return;
+        }
         o.Add(new Spr(Sclera, gx, gy, s, s, 0, 1f));
         float isz = 0.33f * s * (1f + 0.04f * breath);
         o.Add(new Spr(Iris, gx + lx, gy + ly, isz, isz, t * 14f, 1f));
@@ -672,10 +2243,67 @@ internal sealed class GemStyle
         float sp = 1f + 1.5f * e + 3f * f.Item2;
         float osc = 0.5f + 0.5f * MathF.Sin(t * 2.6f) * MathF.Sin(t * 1.1f + 0.7f);
         float pz = 0.80f + 0.12f * MathF.Sin(t * 4.3f) + 0.10f * f.Item1;
+        if (StarFrames.Length > 0)
+        {
+            // Estrela de cristal: energia roxa girando atrás, a estrela girando devagar (rápido na briga) e núcleo aceso.
+            o.Add(new Spr(Plasma, gx, gy, s * pz * 1.15f, s * pz * 1.15f, t * 20f, Math.Clamp(0.30f + 0.30f * osc + 0.2f * e + 0.4f * f.Item5, 0f, 1f)));
+            o.Add(new Spr(OrbSwirlA, gx, gy, s * 1.2f, s * 1.2f, -t * 35f * sp, (0.15f + 0.35f * osc) * (0.4f + 0.6f * e)));
+            float rp = t * (0.28f + 0.6f * f.Item2); rp -= MathF.Floor(rp);
+            rp *= e * e * (3f - 2f * e);                                   // parada (alinhada com o encaixe) quando inativa
+            float yaw = rp * MathF.Tau;
+            var R = System.Numerics.Matrix4x4.CreateRotationX(0.25f) * System.Numerics.Matrix4x4.CreateRotationY(yaw);
+            int ns = SpikeDir.Length / 5;
+            // Pontas: cada uma estica e recolhe no seu tempo (instável); na briga todas esticam juntas.
+            Span<float> tipX = stackalloc float[16], tipY = stackalloc float[16], tipZ = stackalloc float[16];
+            for (int pass = 0; pass < 2; pass++)
+            {
+                for (int k = 0; k < ns; k++)
+                {
+                    var d = System.Numerics.Vector3.Transform(new System.Numerics.Vector3(SpikeDir[k * 5], SpikeDir[k * 5 + 1], SpikeDir[k * 5 + 2]), R);
+                    if ((d.Z >= 0f) != (pass == 1)) continue;
+                    float grow = 1f + e * (0.38f * (GemArt.SmoothNoise(t * 1.6f + k * 3.7f, k + 40) - 0.45f)) + 0.45f * f.Item2 + 0.25f * f.Item5;
+                    float len = SpikeDir[k * 5 + 3] * grow, w = SpikeDir[k * 5 + 4];
+                    float half = 0.5f * s;
+                    float ex = d.X * len * half, ey = d.Y * len * half;
+                    float pl = MathF.Sqrt(ex * ex + ey * ey);
+                    tipX[k] = gx + ex; tipY[k] = gy + ey; tipZ[k] = d.Z;
+                    if (pl < 0.01f) continue;
+                    float rot = MathF.Atan2(-ex, ey) * 180f / MathF.PI;
+                    o.Add(new Spr(SpikeTex, gx + ex * 0.5f, gy + ey * 0.5f, w * s * 1.15f, pl / 0.95f, rot, 1f));
+                }
+                if (pass == 0)
+                {
+                    // Núcleo facetado entre as pontas de trás e as da frente.
+                    float fpos = rp * 4f * StarFrames.Length; int fi = (int)fpos;
+                    o.Add(new Spr(StarFrames[fi % StarFrames.Length], gx, gy, s, s, 0, 1f));
+                }
+            }
+            // Faíscas de plasma pulando entre pontas vizinhas da frente, sem ritmo certo.
+            if (e > 0.05f && ArcTex.Length > 0)
+                for (int lane = 0; lane < 3; lane++)
+                {
+                    float u = t / (0.55f + 0.2f * lane) + lane * 0.3f; int cyc = (int)MathF.Floor(u); u -= cyc;
+                    if (Hash(cyc * 7 + lane * 31) < 0.45f || u > 0.35f) continue;
+                    int a = (int)(Hash(cyc * 13 + lane) * ns) % ns, b = (a + 1 + (int)(Hash(cyc * 5 + lane * 3) * 3f)) % ns;
+                    if (tipZ[a] < -0.2f || tipZ[b] < -0.2f) continue;
+                    float fl = 1f - u / 0.35f;
+                    Strand(ArcTex[(cyc + lane) % ArcTex.Length], tipX[a], tipY[a], tipX[b], tipY[b], 0.10f * s, e * fl, o);
+                }
+            float cz = 0.55f + 0.10f * MathF.Sin(t * 4.3f) + 0.25f * e * osc + 0.4f * f.Item5;
+            o.Add(new Spr(StarCore, gx, gy, s * cz, s * cz, t * 30f, Math.Clamp(0.6f + 0.3f * osc + 0.3f * f.Item5, 0f, 1f)));
+            OrbitRunes(e, t, gx, gy, s, true, o);
+            if (_lv >= Lustrosa && e > 0.01f) Rifts(e, t, o);
+            return;
+        }
         o.Add(new Spr(Plasma, gx, gy, s * pz, s * pz, t * 20f, Math.Clamp(0.45f + 0.35f * osc + 0.2f * e + 0.4f * f.Item5, 0f, 1f)));
         o.Add(new Spr(OrbSwirlA, gx, gy, s, s, -t * 35f * sp, 0.25f + 0.6f * osc));
         o.Add(new Spr(OrbSwirlB, gx, gy, s * 0.92f, s * 0.92f, t * 48f * sp + 30f, 0.25f + 0.6f * (1f - osc)));
         o.Add(new Spr(GemGlow, gx, gy, s * (1.05f + 0.1f * f.Item2), s * (1.05f + 0.1f * f.Item2), 0, 0.05f + 0.2f * e * f.Item1 + 0.5f * f.Item5));
+        if (OrbShell.Length > 0)
+        {
+            // Casca de cristal por cima da energia: gira devagar (mais rápido com a Corrente ativa).
+            o.Add(new Spr(OrbShell[0], gx, gy, s, s, 0, 1f));
+        }
         OrbitRunes(e, t, gx, gy, s, true, o);
         if (_lv >= Lustrosa && e > 0.01f) Rifts(e, t, o);
     }
@@ -779,6 +2407,15 @@ internal sealed class GemStyle
                     o.Add(new Spr(LinkRune, x, y, 0.07f * th, 0.07f * th, 0, Math.Min(1f, glowPulse) * (0.6f + 0.4f * MathF.Sin(t * 4f + i))));
             }
             if (broken && f.Item4 > 0.9f) o.Add(new Spr(Glint, ex, ey, 0.35f, 0.35f, t * 90f, 1f));      // clarão ao grudar
+            if (ChainPulse >= 0 && !broken && e > 0.02f)
+                for (int pk = 0; pk < 2; pk++)
+                {
+                    // Pulsos de energia correndo pelos elos, da âncora até a estrela.
+                    float u = t * (0.55f + 0.5f * e) + c * 0.31f + pk * 0.5f; u -= MathF.Floor(u);
+                    float sag = slack * 4f * u * (1f - u);
+                    float ps = 0.09f + 0.04f * MathF.Sin(MathF.PI * u);
+                    o.Add(new Spr(ChainPulse, ax + dx * u, ay + dy * u - sag, ps, ps, 0, e * MathF.Sin(MathF.PI * u)));
+                }
         }
     }
 
@@ -807,6 +2444,84 @@ internal sealed class GemStyle
     }
 
     /// <summary>Desenha um relâmpago esticado entre dois pontos (textura vertical, base embaixo).</summary>
+    /// <summary>Duração da explosão de abate de V Blood (segundos).</summary>
+    public const float VBloodBlastDur = 1.9f;
+
+    /// <summary>
+    /// Explosão quando a joia absorve um V Blood: clarão, raios girando, três ondas de choque, faíscas
+    /// voando e um toque do elemento (estilhaços de gelo, raios, runas, gotas...). a = segundos desde a explosão.
+    /// </summary>
+    public void VBloodBlast(float a, float t, float gx, float gy, float unit, List<Spr> o)
+    {
+        if (a < 0f || a > VBloodBlastDur || VbRing < 0) return;
+        float Ease(float q) => 1f - (1f - q) * (1f - q) * (1f - q);
+        // Implosão rápida antes de explodir (0 a 0.18): a energia se concentra na joia.
+        if (a < 0.18f)
+        {
+            float q = a / 0.18f;
+            o.Add(new Spr(VbCore, gx, gy, unit * (2.6f - 1.6f * q), unit * (2.6f - 1.6f * q), 0, 0.4f + 0.6f * q));
+            return;
+        }
+        float b = a - 0.18f;
+        // Clarão.
+        float fl = Clamp01(1f - b / 0.55f);
+        o.Add(new Spr(VbCore, gx, gy, unit * (1.2f + 4.5f * Ease(Clamp01(b / 0.4f))), unit * (1.2f + 4.5f * Ease(Clamp01(b / 0.4f))), 0, fl * fl));
+        // Raios girando.
+        float rq = Clamp01(b / 0.9f);
+        float rs = unit * (1.5f + 4.5f * Ease(Clamp01(b / 0.35f)));
+        o.Add(new Spr(VbRays, gx, gy, rs, rs, t * 25f, (1f - rq) * (1f - rq)));
+        o.Add(new Spr(VbRays, gx, gy, rs * 0.75f, rs * 0.75f, -t * 40f + 20f, (1f - rq) * 0.7f));
+        // Ondas de choque.
+        for (int k = 0; k < 3; k++)
+        {
+            float q = Clamp01((b - k * 0.16f) / (0.85f + k * 0.15f));
+            if (q <= 0f || q >= 1f) continue;
+            float r = unit * (1.0f + (6.5f - k * 1.2f) * Ease(q));
+            o.Add(new Spr(VbRing, gx, gy, r, r, k * 40f, MathF.Pow(1f - q, 1.4f) * (1f - k * 0.2f)));
+        }
+        // Faíscas voando.
+        if (Particle >= 0)
+            for (int k = 0; k < 26; k++)
+            {
+                float q = Clamp01((b - Hash(k * 5) * 0.12f) / (0.9f + 0.5f * Hash(k * 11)));
+                if (q <= 0f || q >= 1f) continue;
+                float an = k / 26f * MathF.Tau + Hash(k * 17) * 0.4f;
+                float d = unit * (0.5f + 4.2f * (0.5f + 0.5f * Hash(k * 23)) * Ease(q));
+                float sz = unit * (0.12f + 0.14f * Hash(k * 29)) * (1f - q);
+                o.Add(new Spr(Particle, gx + MathF.Cos(an) * d, gy + MathF.Sin(an) * d - unit * 0.6f * q * q, sz, sz, 0, 1f - q));
+            }
+        // Toque de cada elemento.
+        if (Kind == GemArt.Gelo && IceShard.Length > 0)
+            for (int k = 0; k < 12; k++)
+            {
+                float q = Clamp01(b / 1.1f); if (q >= 1f) break;
+                float an = k / 12f * MathF.Tau + 0.2f, d = unit * (0.6f + 3.2f * Ease(q) * (0.7f + 0.3f * Hash(k)));
+                o.Add(new Spr(IceShard[k % IceShard.Length], gx + MathF.Cos(an) * d, gy + MathF.Sin(an) * d, unit * 0.22f, unit * 0.55f, an * 57.3f - 90f + q * 200f, 1f - q * q));
+            }
+        else if (Kind == GemArt.Tempestade && Lightning.Length > 0 && b < 0.7f)
+        {
+            int fr = (int)(t * 20f);
+            for (int k = 0; k < 7; k++)
+            {
+                float an = k / 7f * MathF.Tau + Hash(fr * 3 + k) * 0.6f, l = unit * (2.0f + 2.5f * Hash(fr + k * 7));
+                Strike(gx, gy, gx + MathF.Cos(an) * l, gy + MathF.Sin(an) * l, unit * 0.5f, fr + k, 1f - b / 0.7f, o);
+            }
+        }
+        else if (KillRunes.Length > 0)
+            for (int k = 0; k < 8; k++)
+            {
+                float q = Clamp01((b - 0.05f) / 1.3f); if (q >= 1f) break;
+                float an = k / 8f * MathF.Tau + q * 1.5f, d = unit * (1.0f + 2.8f * Ease(q));
+                o.Add(new Spr(KillRunes[k % KillRunes.Length], gx + MathF.Cos(an) * d, gy + MathF.Sin(an) * d, unit * 0.7f, unit * 0.7f, q * 90f, MathF.Sin(MathF.PI * Clamp01(q * 1.4f))));
+            }
+        // Brilho que fica pulsando na joia depois.
+        if (Halo >= 0)
+        {
+            float q = Clamp01((b - 0.3f) / 1.4f);
+            if (q > 0f && q < 1f) o.Add(new Spr(Halo, gx, gy, unit * (2.0f + 0.3f * MathF.Sin(t * 12f)), unit * (2.0f + 0.3f * MathF.Sin(t * 12f)), 0, MathF.Sin(MathF.PI * q) * 0.8f));
+        }
+    }
+
     void Strike(float x0, float y0, float x1, float y1, float w, int frame, float a, List<Spr> o)
     {
         float dx = x1 - x0, dy = y1 - y0, len = MathF.Sqrt(dx * dx + dy * dy);
@@ -824,9 +2539,10 @@ internal sealed class GemStyle
         var (c, st, cyc) = Storm(t, e);
         int fr = (int)MathF.Floor(t * 14f);
         float flash = st >= 0f ? 1f - st : 0f;
-        o.Add(new Spr(BoltCore, gx, gy, s, s, 0, Math.Min(1f, 0.10f + 0.55f * c + flash)));
+        float k3 = GemFrames.Length > 0 ? 0.35f : 1f;   // 3D: a pedra lapidada aparece por baixo
+        o.Add(new Spr(BoltCore, gx, gy, s, s, 0, Math.Min(1f, (0.10f + 0.55f * c + flash) * k3)));
         // Eletricidade correndo por dentro do cristal.
-        o.Add(new Spr(BoltVeins[fr % BoltVeins.Length], gx, gy, s, s, 0, Math.Min(1f, 0.25f + 0.6f * e * (0.5f + 0.5f * c) + flash)));
+        o.Add(new Spr(BoltVeins[fr % BoltVeins.Length], gx, gy, s, s, 0, Math.Min(1f, (0.25f + 0.6f * e * (0.5f + 0.5f * c) + flash) * k3)));
         // Faíscas nas bordas: encaixado só de vez em quando; ativo sem parar, mais forte carregando.
         float idle = Hash(fr * 7 + 3) > 0.82f ? 0.7f : 0f;
         float sa = Math.Max(idle * (1f - e), e * (0.45f + 0.55f * c));
@@ -904,6 +2620,8 @@ internal sealed class GemStyle
         {
             case GemArt.Sangue:      // chifres: desenhados depois da escuridão (ver Frame)
                 break;
+            case GemArt.Tempestade when Tesla3D >= 0:   // 3D: bobinas desenhadas em TeslaCoils (sempre visíveis)
+                break;
             case GemArt.Tempestade:  // duas bobinas de Tesla dos lados, estalando no topo
             {
                 var (c, _, _) = Storm(t, e);
@@ -942,7 +2660,8 @@ internal sealed class GemStyle
                     for (int sd = -1; sd <= 1; sd += 2)
                         o.Add(new Spr(sd < 0 ? WingL : WingR, sd * 0.70f, cy + 0.26f + 0.05f * flap, 1.45f, 1.45f * (1f - 0.08f * flap), sd * -10f * flap, e));
                 // Selo: um círculo mágico atrás da bola que se abre quando ela escapa e se fecha quando volta.
-                if (ChaosCircle >= 0)
+                if (HoleTex >= 0) { }   // buraco negro: desenhado em Frame (fica sempre, mesmo encaixada)
+                else if (ChaosCircle >= 0)
                 {
                     float esc = Clamp01(_esc * 1.6f);
                     float cs = 1.3f + 1.2f * esc;
@@ -953,6 +2672,7 @@ internal sealed class GemStyle
                 break;
             }
             case GemArt.Gelo when GeloMode == 6:   // asas: desenhadas em Frame (fechadas em volta do bloco / abertas)
+                if (CBat.Length > 0) BatSwarm(e, t, cy, false, o);   // bando de morceguinhos de cristal: metade de trás
                 break;
             case GemArt.Gelo when GeloMode != 0:   // véu espectral discreto (o resto vem em GeloLegendMid)
                 o.Add(new Spr(M1, 0, cy, 2.7f, 2.7f, 8f * MathF.Sin(t * 0.7f), e * 0.45f));
@@ -980,7 +2700,7 @@ internal sealed class GemStyle
                         // Centro da peça = base (perto da borda da bola) + metade do comprimento na direção do tentáculo.
                         float dx = -MathF.Sin(ang), dy = MathF.Cos(ang);
                         float bx = dx * 0.30f, by = cy + dy * 0.30f;
-                        o.Add(new Spr(tex[k % 3], bx + dx * len * 0.5f, by + dy * len * 0.5f, wid * 1.3f, len, baseAng + sway, e));
+                        o.Add(new Spr(TentTex(k % 3, t + k * 0.53f, e), bx + dx * len * 0.5f, by + dy * len * 0.5f, wid * 1.3f, len, baseAng + sway, e));
                         // Veneno pingando da ponta.
                         float u = t / 1.6f + Hash(k * 41 + 9); int cyc = (int)MathF.Floor(u); float p = u - cyc;
                         float tx = bx + dx * len * 0.93f, ty = by + dy * len * 0.93f;
@@ -988,17 +2708,8 @@ internal sealed class GemStyle
                         float fy = p < 0.3f ? 0f : Sq((p - 0.3f) / 0.7f) * 0.55f;
                         o.Add(new Spr(Venom, tx, ty - fy - dsz * 0.3f, dsz, dsz * 1.3f, 0, e * (p > 0.8f ? (1f - p) / 0.2f : 1f)));
                     }
-                    // Olhinhos se abrindo e fechando na escuridão.
-                    for (int k = 0; k < 6; k++)
-                    {
-                        float u = t / 4.1f + k / 6f * 1.7f; int cyc = (int)MathF.Floor(u); float p = u - cyc;
-                        float open = p < 0.1f ? p / 0.1f : p < 0.55f ? 1f : p < 0.65f ? 1f - (p - 0.55f) / 0.1f : 0f;
-                        if (open <= 0f) continue;
-                        float ang = (Hash(k * 19 + cyc * 7) * 2f - 1f) * MathF.PI;
-                        float r = 0.80f + 0.45f * Hash(k * 3 + cyc * 13);
-                        float sz = 0.22f + 0.10f * Hash(k * 5 + cyc);
-                        o.Add(new Spr(MiniEye, MathF.Cos(ang) * r, cy + MathF.Sin(ang) * r * 0.85f, sz * 1.6f, sz * open, 0, e));
-                    }
+                    // Olhinhos se abrindo e fechando na escuridão (no 3D vão na frente da névoa, ver LegendEyes).
+                    if (BallFrames.Length == 0) LegendEyes(e, t, cy, o);
                 }
                 break;
             case GemArt.Luz:
@@ -1034,6 +2745,7 @@ internal sealed class GemStyle
 
     void LegendFront(float e, float t, float cy, List<Spr> o)
     {
+        if (Kind == GemArt.Gelo && CBat.Length > 0) BatSwarm(e, t, cy, true, o);   // metade da frente
         if (Kind == GemArt.Caos && Feather >= 0)
         {
             // Penas pretas caindo das asas e queimando em fogo roxo.
@@ -1047,7 +2759,7 @@ internal sealed class GemStyle
                 o.Add(new Spr(Feather, x, y, 0.13f, 0.30f, 40f * MathF.Sin(u * 7f + k) + sd * 30f, a));
             }
         }
-        if (Kind == GemArt.Gelo && GeloMode == 6)
+        if (Kind == GemArt.Gelo && GeloMode == 6 && CBat.Length == 0)
         {
             // Mandíbula de gelo: abre devagar e morde de repente; o bloco fica dentro da boca.
             float u = t / 3.4f; u -= MathF.Floor(u);
@@ -1154,6 +2866,23 @@ internal sealed class GemStyle
                 }
                 break;
 
+            case GemArt.Gelo when GeloMode == 6 && CBat.Length > 0:
+            {
+                // Morcego de cristal: frio em volta respirando, e a cada batida de asa uma onda de geada sai dele.
+                float wb = WingBeat(t, e);
+                o.Add(new Spr(Halo, 0, cy, 2.0f * (1f + 0.05f * wb), 2.0f * (1f + 0.05f * wb), 0, e * (0.45f + 0.30f * wb)));
+                float u = t * 3.4f / MathF.Tau - 0.5f; u -= MathF.Floor(u);
+                float sz = 0.9f + 1.6f * MathF.Sqrt(u);
+                o.Add(new Spr(FrostRing, 0, cy + 0.15f * e, sz, sz * 0.92f, 0, e * (1f - u) * Math.Min(1f, u * 10f) * 0.8f));
+                for (int k = 0; k < 6; k++)
+                {
+                    float m = t / 3.4f + k / 6f; int cyc = (int)MathF.Floor(m); m -= cyc;
+                    float x = (Hash(k * 13 + cyc * 7) - 0.5f) * 1.3f;
+                    o.Add(new Spr(Mist, x, cy - 0.35f - m * 0.95f, 0.8f + 0.6f * m, 0.45f + 0.3f * m, 0, e * 0.5f * MathF.Sin(MathF.PI * m)));
+                }
+                o.Add(new Spr(Mist, 0.12f * MathF.Sin(t * 0.6f), cy - 0.66f, 2.6f, 0.9f, 0, e * 0.55f));
+                break;
+            }
             case GemArt.Gelo when GeloMode == 6:
             {
                 float hb = FrozenHeart(t, e);
@@ -1348,6 +3077,29 @@ internal sealed class GemStyle
                         ang * 180f / MathF.PI + 90f, e * (0.6f + 0.4f * MathF.Sin(ang + 1f))));
                 }
                 break;
+            case GemArt.Gelo when GeloMode == 6 && CBat.Length > 0:
+            {
+                // Neve caindo devagar + lascas de gelo que se soltam das asas a cada batida e caem girando.
+                for (int k = 0, n = 8 + 4 * more; k < n; k++)
+                {
+                    float u = Frac(t * (0.10f + 0.06f * Hash(k)) + Hash(k + 3));
+                    float x = (Hash(k * 11 + 5) - 0.5f) * 2.0f + 0.08f * MathF.Sin(t * 1.3f + k);
+                    float sz = 0.07f + 0.06f * Hash(k + 11);
+                    o.Add(new Spr(Flake, x, 1.0f - u * 2.0f, sz, sz, t * 40f + k * 30f, e * MathF.Sin(MathF.PI * u) * 0.8f));
+                }
+                float lift = 0.30f * e;
+                for (int k = 0; k < 6; k++)
+                {
+                    float ph = t * 3.4f / MathF.Tau - 0.5f + k * 0.07f; int cyc = (int)MathF.Floor(ph); float u = ph - cyc;
+                    if (Hash(cyc * 5 + k) < 0.35f) continue;
+                    float side = (k % 2 == 0) ? -1f : 1f;
+                    float x0 = side * (0.25f + 0.30f * Hash(k * 7 + cyc)), y0 = lift + 0.05f - 0.25f * Hash(k * 3 + cyc * 11);
+                    float x = x0 + side * u * 0.15f, y = y0 - u * u * 0.9f;
+                    float sz = (0.06f + 0.04f * Hash(k + cyc)) * (1f - u * 0.5f);
+                    o.Add(new Spr(Glint >= 0 ? Flake : Flake, x, y, sz, sz, t * 300f * side + k * 40f, e * (1f - u) * 0.9f));
+                }
+                break;
+            }
             case GemArt.Gelo when GeloMode != 0:   // neve caindo devagar
                 for (int k = 0, n = 10 + 4 * more; k < n; k++)
                 {
@@ -1385,7 +3137,28 @@ internal sealed class GemStyle
                     float pop = p > 0.85f ? 1f + (p - 0.85f) / 0.15f * 0.8f : 1f;
                     o.Add(new Spr(Particle, x0 + 0.06f * MathF.Sin(t * 3f + k), 0.25f + y0 + p * 0.75f, sz * pop, sz * pop, 0, e * a));
                 }
-                for (int k = 0, n = 4 + more; k < n; k++)       // gotas de veneno pingando da bola
+                if (Rivulet >= 0)
+                {
+                    // 3D: filetes de veneno escorrem pela gosma até a borda de baixo, a gota incha e cai.
+                    for (int k = 0, n = 4 + more; k < n; k++)
+                    {
+                        float u = t / 2.6f + k / (float)n; int cyc = (int)MathF.Floor(u); float p = u - cyc;
+                        float rx = (Hash(k * 31 + cyc * 7) - 0.5f) * 0.5f;
+                        float y0 = -MathF.Sqrt(0.2209f - rx * rx) + 0.03f;
+                        float sx = rx * 0.55f + (Hash(k * 11 + cyc * 3) - 0.5f) * 0.12f, sy = -0.02f - 0.12f * Hash(k * 7 + cyc);
+                        float run = Math.Min(1f, p / 0.35f); run = 1f - (1f - run) * (1f - run);
+                        float hx = sx + (rx - sx) * run, hy = sy + (y0 - sy) * run;
+                        // A cauda vai secando de cima para baixo depois que a gota sai.
+                        float dry = Math.Clamp((p - 0.40f) / 0.45f, 0f, 1f);
+                        float tx2 = sx + (hx - sx) * dry, ty2 = sy + (hy - sy) * dry;
+                        if (dry < 0.98f) Strand(Rivulet, hx, hy, tx2, ty2, 0.055f + 0.02f * Hash(k), e * (1f - dry * dry), o);
+                        float y = p < 0.50f ? y0 : y0 - Sq((p - 0.50f) / 0.50f) * 0.7f;
+                        float sz = p < 0.35f ? 0f : p < 0.50f ? 0.05f + 0.08f * ((p - 0.35f) / 0.15f) : 0.13f;
+                        float a = p > 0.8f ? 1f - (p - 0.8f) / 0.2f : 1f;
+                        if (sz > 0f) o.Add(new Spr(Venom, rx, y - sz * 0.3f, sz, sz * 1.25f, 0, e * a));
+                    }
+                }
+                else for (int k = 0, n = 4 + more; k < n; k++)       // gotas de veneno pingando da bola
                 {
                     float u = t / 1.9f + k / (float)n; int cyc = (int)MathF.Floor(u); float p = u - cyc;
                     float rx = (Hash(k * 31 + cyc * 7) - 0.5f) * 0.5f;
@@ -1479,11 +3252,31 @@ internal static class GemArt
                 // Gota de vidro rubi com sangue líquido dentro (em vez das facetas).
                 g.Gem = g.Add(S, GlassDrop(false));
                 g.Gem2 = g.Add(S, GlassDrop(true));
+                if (Mode3D)
+                {
+                    // Estilo 3D: rubi lapidado em corte pera (gota).
+                    var mesh = Gem3D.Cut(Gem3D.Pear(32), table: 0.62f, crown: 0.30f, depth: 0.7f, convex: true);
+                    var mat = new Gem3D.GemMat { Base = new System.Numerics.Vector3(0.62f, 0.03f, 0.09f), Deep = new System.Numerics.Vector3(0.26f, 0.01f, 0.04f), Sparkle = 0.4f };
+                    g.GemFrames = new int[24];
+                    for (int i = 0; i < 24; i++) g.GemFrames[i] = g.Add(S, Gem3D.Render(mesh, (i / 23f - 0.5f) * 0.9f, -0.08f, S, mat, 1f));
+                    // Elos de ouro 3D (de frente e de lado).
+                    var gold = new Gem3D.GemMat { Base = new System.Numerics.Vector3(0.98f, 0.70f, 0.26f), Metal = true, Edges = false };
+                    var link = Gem3D.Link(0.30f, 0.36f, 0.19f);
+                    g.Tex[g.LinkFace] = Gem3D.Render(link, 0f, 0.30f, 64, gold, 1.0f);
+                    g.Tex[g.LinkEdge] = Gem3D.Render(link, 0f, MathF.PI / 2f - 0.15f, 64, gold, 1.0f);
+                    g.LinkVariants = new[] { g.LinkEdge, g.Add(64, Gem3D.Render(link, 0.22f, MathF.PI / 2f - 0.35f, 64, gold, 1.0f)), g.Add(64, Gem3D.Render(link, -0.22f, MathF.PI / 2f + 0.05f, 64, gold, 1.0f)) };
+                    g.ShadowDot = g.Add(32, Paint(32, (x, y) => { float r = Len(x, y); float a = Clamp01(1f - r); return (0f, 0f, 0f, a * a * 0.9f); }));
+                    var iron = new Gem3D.GemMat { Base = new System.Numerics.Vector3(0.40f, 0.38f, 0.40f), Metal = true, Edges = false };
+                    g.ChainAnchor = g.Add(64, Gem3D.Render(Gem3D.EyeBolt(), 0f, 0.35f, 64, iron, 1.0f));
+                    // Elo em brasa (por cima quando a corrente está no limite): mesmo elo, metal incandescente.
+                    var hot = new Gem3D.GemMat { Base = new System.Numerics.Vector3(1.6f, 0.45f, 0.18f), Metal = true, Edges = false };
+                    g.HotFace = g.Add(64, Gem3D.Render(link, 0f, 0.25f, 64, hot, 1.0f));
+                    g.HotEdge = g.Add(64, Gem3D.Render(link, 0f, MathF.PI / 2f - 0.12f, 64, hot, 1.0f));
+                }
                 g.Liquid = new int[9];
                 for (int i = 0; i < 9; i++) g.Liquid[i] = g.Add(S, LiquidTex((i - 4) * GemStyle.LiquidStep));
                 g.GlassTop = g.Add(S, GlassShine());
-                g.HotFace = g.Add(64, ChainHot(true));
-                g.HotEdge = g.Add(64, ChainHot(false));
+                if (g.HotFace < 0) { g.HotFace = g.Add(64, ChainHot(true)); g.HotEdge = g.Add(64, ChainHot(false)); }
                 g.Spark = g.Add(32, SparkTex());
                 g.VeinA = g.Add(S, HoleVeins(Drop, false));
                 g.VeinB = g.Add(S, HoleVeins(Drop, true));
@@ -1686,8 +3479,639 @@ internal static class GemArt
                 g.Particle = g.Add(P, Ember());
                 break;
         }
+        if (Mode3D && kind == Luz && LuzColor != "Diamante")
+        {
+            // A luz reluzida acompanha a cor da pedra: auras, raios, coroa e esferas tingidos.
+            var tc = LuzGem().c;
+            foreach (int id in new[] { g.Halo, g.A1, g.A2, g.Particle, g.M1, g.M2, g.M3, g.M4, g.M5, g.M6, g.M7, g.EnergyA, g.EnergyB })
+            {
+                if (id < 0) continue;
+                var px = g.Tex[id];
+                for (int q = 0; q < px.Length; q += 4)
+                {
+                    float lum = 0.3f * px[q] + 0.55f * px[q + 1] + 0.15f * px[q + 2];
+                    px[q] = Clamp01(px[q] * 0.2f + lum * tc.X * 0.95f);
+                    px[q + 1] = Clamp01(px[q + 1] * 0.2f + lum * tc.Y * 0.95f);
+                    px[q + 2] = Clamp01(px[q + 2] * 0.2f + lum * tc.Z * 0.95f);
+                }
+            }
+        }
+        {
+            // Explosão de V Blood: anel de choque, raios e núcleo na cor do elemento.
+            var ec = energyOf(kind);
+            if (kind == Luz) ec = (1f, 0.96f, 0.86f);
+            g.VbRing = g.Add(S, Paint(S, (x, y) =>
+            {
+                float r = Len(x, y);
+                float core = Clamp01(1f - MathF.Abs(r - 0.84f) / 0.045f);
+                float glow = Clamp01(1f - MathF.Abs(r - 0.80f) / 0.20f);
+                float a = MathF.Max(core, glow * glow * 0.55f) * (0.75f + 0.25f * Fbm(x * 7f, y * 7f));
+                float w = core * core;
+                return (ec.r + (1f - ec.r) * w, ec.g + (1f - ec.g) * w, ec.b + (1f - ec.b) * w, a);
+            }));
+            g.VbRays = g.Add(S, Paint(S, (x, y) =>
+            {
+                float r = Len(x, y), an = MathF.Atan2(y, x);
+                float a = 0f;
+                for (int k = 0; k < 18; k++)
+                {
+                    float ca = k / 18f * MathF.Tau + (GemStyle.Hash(k * 7 + 1) - 0.5f) * 0.25f;
+                    float d = MathF.Abs(MathF.IEEERemainder(an - ca, MathF.Tau));
+                    float len = 0.45f + 0.55f * GemStyle.Hash(k * 13 + 5);
+                    float wdt = 0.035f + 0.05f * GemStyle.Hash(k * 3 + 2);
+                    float ray = Clamp01(1f - d / (wdt * (1.2f - r))) * Clamp01(1f - r / len);
+                    a = MathF.Max(a, ray);
+                }
+                a = MathF.Max(a, Clamp01(1f - r / 0.25f) * 0.9f);
+                float w = Clamp01(1f - r / 0.45f);
+                return (ec.r + (1f - ec.r) * w, ec.g + (1f - ec.g) * w, ec.b + (1f - ec.b) * w, a);
+            }));
+            g.VbCore = g.Add(S, Paint(S, (x, y) =>
+            {
+                float r = Len(x, y);
+                float f = Clamp01(1f - r);
+                float w = Clamp01(1f - r / 0.35f);
+                return (ec.r + (1f - ec.r) * w, ec.g + (1f - ec.g) * w, ec.b + (1f - ec.b) * w, f * f * f);
+            }));
+        }
+        if (Mode3D)
+        {
+            var rimC = new System.Numerics.Vector3(energyOf(kind).r, energyOf(kind).g, energyOf(kind).b);
+            for (int m = 0; m < 3; m++)
+            {
+                int idx = m == 0 ? g.RingBronze : m == 1 ? g.RingSilver : g.RingGold;
+                g.Tex[idx] = Gem3D.MetalRing(m, g.Size[idx], kind == Luz ? LuzGem().c : kind == Corrompida ? new System.Numerics.Vector3(0.25f, 0.85f, 0.30f) : kind == Gelo ? new System.Numerics.Vector3(0.45f, 0.75f, 1.0f) : kind == Tempestade ? new System.Numerics.Vector3(1.0f, 0.75f, 0.15f) : null);
+                // Corrompida: a gosma vai tomando o anel conforme evolui.
+                if (kind == Corrompida) g.Tex[idx] = Gem3D.Over(g.Tex[idx], Gem3D.GooRing(g.Size[idx], 0.12f + 0.09f * m, 4 + m));
+            }
+            if (kind == Corrompida) g.RingGoo = g.Add(g.Size[g.RingGold], Gem3D.GooRing(g.Size[g.RingGold], 0.30f, 9));
+            if (kind == Luz)
+            {
+                // Pedra-da-lua bruta: branca leitosa com o brilho azulado flutuante (adulária).
+                g.Tex[g.Ball] = Gem3D.WhiteOpal(g.Size[g.Ball], 0.94f);
+                g.OpaqueBall = true;
+                // Opala viva: o jogo de cores anda devagar pela pedra (12 quadros misturados).
+                g.BallFrames = new int[12];
+                for (int i = 0; i < 12; i++) g.BallFrames[i] = g.Add(S, Gem3D.WhiteOpal(S, 0.94f, 5, i / 12f));
+                // O sol de sempre, agora em diamante: centro em corte rosa (cúpula facetada) e 8 raios
+                // lapidados girando em volta.
+                var (lc, lfire) = LuzGem();
+                var dia = new Gem3D.GemMat { Base = lc, Deep = lc * 0.75f, Sparkle = 0.9f, Fire = lfire };
+                var round = new System.Numerics.Vector2[16];
+                for (int i = 0; i < 16; i++) { float a = i / 16f * MathF.Tau; round[i] = new System.Numerics.Vector2(MathF.Cos(a), MathF.Sin(a)) * 0.30f; }
+                var core = Gem3D.Rose(round, 0.20f, 3);
+                g.GemFrames = new int[24];
+                for (int i = 0; i < 24; i++) g.GemFrames[i] = g.Add(S, Gem3D.Render(core, (i / 23f - 0.5f) * 0.9f, -0.10f, S, dia, 1f));
+                g.RayFrames = new int[12];
+                for (int i = 0; i < 12; i++) g.RayFrames[i] = g.Add(S, Gem3D.Render(Gem3D.SunRays(8, i / 12f * MathF.Tau / 8f), 0f, -0.10f, S, dia, 1f));
+                // Encaixe redondo (o sol inteiro assenta nele, mesmo com os raios girando) e sombra redonda.
+                Func<float, float, float> sock = (x, y) => Sun(x / 1.05f, y / 1.05f) * 1.05f;   // encaixe no formato do sol (raios parados quando encaixado)
+                const float ldep = 0.07f;
+                g.Socket = g.Add(BatTex, Gem3D.CarvedSphere(g.Tex[g.Ball], sock, BatTex, BallR * 0.985f, ldep, 0.03f, g.Size[g.Ball], out var lfloor));
+                g.Tex[g.Shadow] = Paint(S, (x, y) => { float r = Len(x, y); float a = Clamp01((0.80f - r) / 0.30f); return (0f, 0f, 0f, a * 0.55f); });
+                var poolC = LuzColor == "Diamante" ? new System.Numerics.Vector3(1.6f, 1.5f, 1.3f) : LuzGem().c * 1.6f;   // energia do encaixe na cor da pedra
+                float lkf = BallR / (BallR - ldep);
+                var lpool = Gem3D.SocketPool((x, y) => sock(x * lkf, y * lkf), BatTex, poolC);
+                for (int i = 0; i < lfloor.Length; i++) lpool[i * 4 + 3] *= lfloor[i];
+                g.SocketPoolTex = g.Add(BatTex, lpool);
+                // Feixe de luz (clarão ao ativar) e diamante pequeno do halo da Lendária.
+                g.LuzBeam = g.Add(64, Paint(64, (x, y) => { float u = Clamp01((y + 1f) / 2f); float w = 0.05f + 0.25f * (1f - u); float a = MathF.Exp(-Sq(x / w)) * MathF.Sin(MathF.PI * u) * (1f - u * 0.6f); return (1f, 0.97f, 0.88f, Clamp01(a)); }));
+                var hround = new System.Numerics.Vector2[12];
+                for (int i = 0; i < 12; i++) { float a = i / 12f * MathF.Tau; hround[i] = new System.Numerics.Vector2(MathF.Cos(a), MathF.Sin(a)) * 0.8f; }
+                g.HaloGem = g.Add(64, Gem3D.Render(Gem3D.Cut(hround, 0.5f, 0.28f, 0.7f, true), 0.3f, -0.5f, 64, dia, 1f));
+            }
+            if (kind == Tempestade)
+            {
+                // Raio de citrino lapidado (chanfro em dois degraus, mesa lisa), balançando devagar.
+                var bv = new[] { 0.08f, 0.86f, 0.46f, 0.86f, 0.14f, 0.16f, 0.42f, 0.16f, -0.28f, -0.86f, -0.04f, -0.08f, -0.32f, -0.08f };
+                var gird = new System.Numerics.Vector2[bv.Length / 2];
+                for (int i = 0; i < gird.Length; i++) gird[i] = new System.Numerics.Vector2(bv[2 * i], bv[2 * i + 1]);
+                var boltMesh = Gem3D.CutConcave(gird);
+                var citrine = new Gem3D.GemMat { Base = new System.Numerics.Vector3(1.0f, 0.70f, 0.14f), Deep = new System.Numerics.Vector3(0.55f, 0.28f, 0.02f), Sparkle = 0.8f };
+                g.GemFrames = new int[24];
+                for (int i = 0; i < 24; i++) g.GemFrames[i] = g.Add(S, Gem3D.Render(boltMesh, (i / 23f - 0.5f) * 0.9f, -0.08f, S, citrine, 1f));
+                // Globo de vidro de verdade por cima dos filamentos.
+                g.GlobeShell = g.Add(S, GlassOrb(0.94f, 0x2A4A9A, 0xE0F0FF, 0xA8D8FF));
+                g.OpaqueBall = true;   // o vidro já tem luz própria (sem o sombreado de esfera por cima)
+                // Encaixe no formato do raio, entalhado no vidro (seguindo a curva), com plasma no fundo.
+                Func<float, float, float> sock = (x, y) => Bolt(x / 1.04f, y / 1.04f) * 1.04f;
+                g.Socket = g.Add(BatTex, Gem3D.CarvedSphere(g.Tex[g.Ball], sock, BatTex, BallR * 0.985f, 0.07f, 0.03f, g.Size[g.Ball], out var tfloor));
+                float kf3 = BallR / (BallR - 0.07f);
+                var tpool = Gem3D.LiquidPool((x, y) => sock(x * kf3, y * kf3), BatTex, new System.Numerics.Vector3(0.55f, 0.85f, 1.2f), 0.04f);
+                for (int i = 0; i < tfloor.Length; i++) tpool[i * 4 + 3] *= tfloor[i];
+                g.SocketPoolTex = g.Add(BatTex, tpool);
+                g.VeinA = -1; g.VeinB = -1;
+                // Trincas elétricas no vidro onde o raio descarrega (3 pontos).
+                g.StormCrack = new int[3];
+                float[] hp = { -0.05f, 0.55f, 0.40f, 0.35f, -0.45f, 0.30f };
+                for (int i = 0; i < 3; i++)
+                    g.StormCrack[i] = g.Add(BatTex, Gem3D.GlowCracks(BatTex, 0.94f, hp[i * 2], hp[i * 2 + 1], 0.55f, 61 + i, false,
+                        new System.Numerics.Vector3(0.35f, 0.75f, 1.0f), new System.Numerics.Vector3(0.95f, 1.0f, 1.0f), 5.5f));
+                // Bobina de Tesla 3D: haste enrolada em fio de cobre, anéis de cobre e esfera prateada no topo.
+                g.Tesla3D = g.Add(256, TeslaCoil3D());
+                g.CoilRings = new[] { g.Add(256, TeslaCoil3D(0)), g.Add(256, TeslaCoil3D(1)), g.Add(256, TeslaCoil3D(2)) };
+                // Alternativas para a Lendária: pilar de pedra, nuvem 3D, cristal de citrino e runas acesas.
+                g.Pillar3D = g.Add(256, RunePillar3D());
+                g.PillarRunes = new int[4];
+                for (int i = 0; i < 4; i++) g.PillarRunes[i] = g.Add(64, GlyphTex(SmallRune(i * 3 + 2), 64, 0.08f, true, 0.8f, 0x3AA8FF, 0xF0FCFF));
+                g.Cloud3D = g.Add(256, StormCloud3D());
+                g.CloudFlash = g.Add(64, Paint(64, (x, y) => { float r = Len(x, y); float a = MathF.Exp(-r * r / 0.25f); var c = Mix(Rgb(0x6AB0FF), Rgb(0xF4FAFF), a); return (c.r, c.g, c.b, a); }));
+                // Asas mecânicas para-raios (5 aberturas, esquerda e direita).
+                g.WingL3 = new int[GemStyle.WPoses]; g.WingR3 = new int[GemStyle.WPoses];
+                for (int i = 0; i < GemStyle.WPoses; i++) { float op = i / (GemStyle.WPoses - 1f); g.WingL3[i] = g.Add(256, GemStyle.TechWing3D(-1, op)); g.WingR3[i] = g.Add(256, GemStyle.TechWing3D(1, op)); }
+                g.OrbitCrystal = g.Add(128, Gem3D.Render(Gem3D.CrystalPoint(0.32f, -0.80f, 0.45f, 0.95f), 0.4f, 0.15f, 128, citrine, 1f));
+            }
+            if (kind == Caos)
+            {
+                // Charoíta bruta: pedra roxa com fibras em redemoinho (o caos já está na própria pedra).
+                g.Tex[g.Ball] = Gem3D.MineralStone(g.Size[g.Ball], 0.94f, rimC, 33,
+                    new System.Numerics.Vector3(0.20f, 0.07f, 0.32f), new System.Numerics.Vector3(0.60f, 0.36f, 0.82f), sheen: 0.5f,
+                    sheenCol: new System.Numerics.Vector3(0.85f, 0.55f, 1.0f), fleckAmt: 1.4f, ambient: 0.38f);
+                g.OpaqueBall = true;
+                g.Veins = -1; g.VeinA = -1; g.VeinB = -1;
+                // Orbe de vidro em volta da bola de energia: borda grossa refratando, reflexos de janela e um
+                // brilho curvo (a energia fica "dentro" do vidro).
+                // Joia: estrela de cristal com pontas facetadas saindo de um núcleo aceso, girando devagar.
+                var starMat = new Gem3D.GemMat { Base = new System.Numerics.Vector3(0.62f, 0.86f, 1.15f), Deep = new System.Numerics.Vector3(0.30f, 0.20f, 0.85f), Sparkle = 1.2f };
+                var star = StarMesh();
+                float[] star0 = Gem3D.Render(star, 0f, 0.25f, S, starMat, 1f);   // silhueta só para o encaixe
+                // Núcleo facetado girando (as pontas são desenhadas uma a uma, para cada uma poder esticar).
+                g.StarFrames = new int[32];
+                for (int i = 0; i < 32; i++)
+                {
+                    var px = Gem3D.Render(Gem3D.Octahedron(), i / 32f * MathF.Tau / 4f, 0.25f, S, starMat, 0.30f);
+                    PlasmaStar(px, S, i);
+                    g.StarFrames[i] = g.Add(S, px);
+                }
+                {
+                    var spk = Gem3D.Render(Gem3D.CrystalPoint(0.30f, -0.95f, 0.15f, 0.95f), 0.3f, 0f, 128, starMat, 1f);
+                    PlasmaStar(spk, 128, 3, true);
+                    g.SpikeTex = g.Add(128, spk);
+                }
+                g.SpikeDir = StarSpikes();
+                // Faíscas de plasma (riscos verticais em zigue-zague), fendas na pedra, pulso das correntes e Lendária.
+                g.ArcTex = new int[3];
+                for (int i = 0; i < 3; i++) g.ArcTex[i] = g.Add(64, ArcBolt(i));
+                g.ChaosCrackNet = g.Add(BatTex, Gem3D.GlowCracks(BatTex, 0.94f, 0f, 0f, 2f, 51, true,
+                    new System.Numerics.Vector3(0.62f, 0.18f, 1.0f), new System.Numerics.Vector3(0.96f, 0.80f, 1.0f), 3.6f, 0.65f));
+                g.ChainPulse = g.Add(32, Paint(32, (x, y) => { float r = Len(x, y); float c = MathF.Exp(-r * r / 0.05f), h = MathF.Exp(-r * r / 0.35f) * 0.6f; var col = Mix(Rgb(0x9A40FF), Rgb(0xF4E4FF), c); return (col.r, col.g, col.b, Clamp01(c + h)); }));
+                g.HoleTex = g.Add(S, BlackHoleTex());
+                g.DiskBack = new int[8];
+                for (int i = 0; i < 8; i++) g.DiskBack[i] = g.Add(BatTex, AccretionDisk(i / 8f));
+                g.StarCore = g.Add(S, Paint(S, (x, y) =>
+                {
+                    float r = Len(x, y);
+                    float c = MathF.Exp(-r * r / 0.02f), h = MathF.Exp(-r * r / 0.16f) * 0.7f;
+                    var col = Mix(Rgb(0x5A10A8), Rgb(0xC070FF), Clamp01(c * 1.2f));
+                    return (col.r, col.g, col.b, Clamp01(c + h));
+                }));
+                // Sem a esfera: a joia base vira só um brilho roxo (a estrela fica por cima).
+                var purple = Paint(S, (x, y) => { float r = Len(x, y); float a = MathF.Exp(-r * r / 0.18f) * 0.55f; return (0.55f, 0.20f, 1.0f, a); });
+                g.Tex[g.Gem] = purple; g.Tex[g.Gem2] = purple;
+                g.ChaosStarSd = SdfFromAlpha(star0, S, 0.02f);
+                // Correntes mágicas de metal escuro com brilho roxo (elos 3D de frente e de lado).
+                var mlinkMat = new Gem3D.GemMat { Base = new System.Numerics.Vector3(0.62f, 0.40f, 0.85f), Metal = true, Edges = false };
+                var mlink = Gem3D.Link(0.30f, 0.36f, 0.17f);
+                g.Tex[g.MLinkFace] = Gem3D.Render(mlink, 0f, 0.30f, 64, mlinkMat, 1.0f);
+                g.Tex[g.MLinkEdge] = Gem3D.Render(mlink, 0f, MathF.PI / 2f - 0.15f, 64, mlinkMat, 1.0f);
+                // Encaixe redondo entalhado na pedra, com energia roxa no fundo.
+                Func<float, float, float> sock = (x, y) => MathF.Max(g.ChaosStarSd(x, y), Len(x, y) - 0.80f);   // encaixe em forma de estrela
+                g.Socket = g.Add(BatTex, Gem3D.CarvedSphere(g.Tex[g.Ball], sock, BatTex, BallR * 0.985f, 0.09f, 0.03f, g.Size[g.Ball], out var cfloor));
+                float kf2 = BallR / (BallR - 0.09f);
+                var cpool = Gem3D.LiquidPool((x, y) => sock(x * kf2, y * kf2), BatTex, new System.Numerics.Vector3(0.75f, 0.30f, 1.1f), 0.04f);
+                for (int i = 0; i < cfloor.Length; i++) cpool[i * 4 + 3] *= cfloor[i];
+                g.SocketPoolTex = g.Add(BatTex, cpool);
+            }
+            if (kind == Gelo)
+            {
+                // Pedra escura de basalto com cristais de geada faiscando.
+                // Pedra de gelo escuro, azul-marinho quase preto, com geada faiscando (a energia fica presa dentro dela).
+                g.Tex[g.Ball] = Gem3D.MineralStone(g.Size[g.Ball], 0.94f, rimC, 71,
+                    new System.Numerics.Vector3(0.04f, 0.09f, 0.20f), new System.Numerics.Vector3(0.14f, 0.28f, 0.48f), sheen: 0.55f,
+                    sheenCol: new System.Numerics.Vector3(0.55f, 0.85f, 1.0f), fleckAmt: 2.0f, ambient: 0.35f);
+                // Trincas acesas: rede de placas (como gelo trincado) abrindo em volta do ponto de impacto, 3 estágios.
+                g.IceHit = new float[GemStyle.IceHits * 2];
+                {
+                    var rnd = new Random(5);
+                    for (int h = 0; h < GemStyle.IceHits; h++)
+                    {
+                        float ang = h / (float)GemStyle.IceHits * MathF.Tau + (float)rnd.NextDouble() * 0.5f;
+                        float rad = 0.50f + 0.28f * (float)rnd.NextDouble();
+                        g.IceHit[h * 2] = MathF.Cos(ang) * rad; g.IceHit[h * 2 + 1] = MathF.Sin(ang) * rad;
+                    }
+                }
+                g.IceCrack = new int[GemStyle.IceHits * 3];
+                for (int h = 0; h < GemStyle.IceHits; h++)
+                    for (int st = 0; st < 3; st++)
+                        g.IceCrack[h * 3 + st] = g.Add(BatTex, Gem3D.GlowCracks(BatTex, 0.94f, g.IceHit[h * 2], g.IceHit[h * 2 + 1], 0.24f + 0.17f * st, 17 + h));
+                g.IceDormant = g.Add(BatTex, Gem3D.GlowCracks(BatTex, 0.94f, 0f, 0f, 2.0f, 91, dormant: true));
+                g.IceCore = g.Add(S, Gem3D.InnerGlow(S, 0.94f));
+                // Estalactites 3D (ponta para baixo) em 3 formatos, estilhaços em 4 ângulos e gota d'água.
+                var icMat = new Gem3D.GemMat { Base = new System.Numerics.Vector3(0.62f, 0.84f, 1.0f), Deep = new System.Numerics.Vector3(0.22f, 0.44f, 0.80f), Sparkle = 0.9f };
+                g.Icicle = new int[3];
+                for (int i = 0; i < 3; i++) { var px = Gem3D.Render(GemStyle.IcicleMesh(i), 0.35f + i * 0.4f, -0.1f, 128, icMat, 1f); IceClear(px, 0.8f); g.Icicle[i] = g.Add(128, px); }
+                g.IceShard = new int[4];
+                for (int i = 0; i < 4; i++) { var px = Gem3D.Render(Gem3D.CrystalPoint(0.32f, -0.9f, 0.1f, 0.95f), i * 0.8f, 0.4f + i * 0.3f, 64, icMat, 0.95f); IceClear(px, 0.8f); g.IceShard[i] = g.Add(64, px); }
+                var water = new Gem3D.GemMat { Base = new System.Numerics.Vector3(0.55f, 0.80f, 1.0f), Deep = new System.Numerics.Vector3(0.20f, 0.40f, 0.75f), Sparkle = 0.7f };
+                { var px = Gem3D.Render(DropMesh3D(), 0f, 0f, 64, water, 0.95f); IceClear(px, 0.7f); g.IceDrop = g.Add(64, px); }
+                g.OpaqueBall = true;
+                g.Veins = -1; g.IceGlowA = -1; g.VampInner = -1;
+                g.VeinA = -1; g.VeinB = -1;   // sem os raios do gelo clássico piscando com o coração
+                // Morcego de cristal: 12 estágios das asas, de fechadas (capa) a abertas.
+                var batIce = new Gem3D.GemMat { Base = new System.Numerics.Vector3(0.58f, 0.80f, 1.0f), Deep = new System.Numerics.Vector3(0.22f, 0.42f, 0.78f), Sparkle = 0.8f };
+                g.CBat = new int[12];
+                var batPx = new List<float[]>();
+                float[] flatOpen = null;
+                for (int i = 0; i < 12; i++)
+                {
+                    var px = Gem3D.Render(CrystalBat(i / 11f), 0f, -0.05f, BatTex, batIce, 1f);
+                    IceClear(px, 0.75f);
+                    g.CBat[i] = g.Add(BatTex, px);
+                    batPx.Add(px);
+                }
+                // Deitado sobre a pedra (asas abertas dobradas na curva da bola) e descolando dela ao ativar.
+                g.CBatBend = new int[4];
+                for (int i = 0; i < 4; i++)
+                {
+                    var px = Gem3D.Render(CrystalBat(1f, 1f - i / 4f), 0f, 0f, BatTex, batIce, 1f);
+                    IceClear(px, 0.75f);
+                    g.CBatBend[i] = g.Add(BatTex, px);
+                    batPx.Add(px);
+                }
+                // O contorno do encaixe é exatamente o do morcego deitado na pedra (já curvado): mesmo recorte das asas,
+                // dedos, orelhas e cabeça, para ele encaixar certinho.
+                var seated = Gem3D.Render(CrystalBat(1f, 1f), 0f, 0f, BatTex, batIce, 1f);
+                g.GemFrames = g.CBat;   // desliga os brilhos 2D da joia clássica
+                // Encaixe: o vulto do morcego de asas abertas entalhado na pedra, com gelo azul aceso no fundo.
+                var sockSd = SdfFromAlpha(seated, BatTex, 0.012f, false);
+                // Entalhe de verdade na pedra: fundo afundado, paredes com luz e sombra, mesma pedra da bola.
+                // O entalhe segue a curva da bola: fundo afundado ao longo da normal, paredes certas nas bordas.
+                const float depth = 0.08f;
+                g.Socket = g.Add(BatTex, Gem3D.CarvedSphere(g.Tex[g.Ball], sockSd, BatTex, BallR * 0.985f, depth, 0.03f, g.Size[g.Ball], out var floorMask));
+                // Gelo no fundo: o mesmo contorno encolhido na direção do centro (o fundo está mais "para dentro" da bola).
+                float kf = BallR / (BallR - depth);
+                var pool = Gem3D.LiquidPool((x, y) => sockSd(x * kf, y * kf), BatTex, new System.Numerics.Vector3(0.45f, 0.80f, 1.15f), 0.04f);
+                for (int i = 0; i < floorMask.Length; i++) pool[i * 4 + 3] *= floorMask[i];
+                g.SocketPoolTex = g.Add(BatTex, pool);
+                Gem3D.Fade(g.Tex[g.SocketPoolTex], 0.55f);   // gelo fino no fundo: deixa ver a pedra entalhada
+            }
+            if (kind == Corrompida)
+            {
+                // Ametista bruta: roxa, com manchas mais claras e cristais que cintilam.
+                g.Tex[g.Ball] = Gem3D.MineralStone(g.Size[g.Ball], 0.94f, rimC, 23,
+                    new System.Numerics.Vector3(0.44f, 0.18f, 0.60f), new System.Numerics.Vector3(0.74f, 0.46f, 0.92f), sheen: 0.12f,
+                    sheenCol: new System.Numerics.Vector3(0.5f, 1.0f, 0.4f), fleckAmt: 1.4f, ambient: 0.42f);
+                g.OpaqueBall = true;
+                // Gosma viva (simbionte): líquido preto escorrendo, fibras em relevo, reflexos roxo e verde.
+                var gooRim = new System.Numerics.Vector3(0.80f, 0.42f, 1.15f); var gooSheen = new System.Numerics.Vector3(0.35f, 0.95f, 0.30f);
+                g.BallFrames = new int[24]; g.BallGlow = new int[24];
+                for (int i = 0; i < 24; i++)
+                {
+                    // Junto de cada quadro sai a camada da luz verde do olho refletida na gosma.
+                    var glow = new float[S * S * 4];
+                    g.BallFrames[i] = g.Add(S, Gem3D.GooBall(S, 0.94f, i / 24f, gooRim, gooSheen, glowOut: glow,
+                        glowPos: new System.Numerics.Vector3(0f, 0.85f, 0.45f), glowCol: new System.Numerics.Vector3(0.45f, 1.0f, 0.30f)));
+                    g.BallGlow[i] = g.Add(S, glow);
+                }
+                // O branco do olho também é gosma correndo (esfera vista pela abertura amendoada).
+                g.EyeGoo = new int[24];
+                for (int i = 0; i < 24; i++) g.EyeGoo[i] = g.Add(S, Gem3D.GooBall(S, 0.80f, i / 24f, gooRim, gooSheen, 17, (x, y) => Eye(x / 0.82f, y / 0.82f) * 0.82f));
+                g.Veins = -1;
+                // Moldura do olho: obsidiana roxa lapidada em marquise (o olho fica no lugar da mesa).
+                var obs = new Gem3D.GemMat { Base = new System.Numerics.Vector3(0.10f, 0.05f, 0.15f), Deep = new System.Numerics.Vector3(0.02f, 0.01f, 0.04f), Sparkle = 0.35f };   // obsidiana quase preta, combinando com a gosma
+                var mq = Gem3D.Cut(Gem3D.OutlineFromSdf(Eye, 36), table: 0.30f, crown: 0.24f, depth: 0.6f, convex: true);
+                g.GemFrames = new int[24];
+                for (int i = 0; i < 24; i++) g.GemFrames[i] = g.Add(S, Gem3D.Render(mq, (i / 23f - 0.5f) * 0.9f, -0.10f, S, obs, 1f));
+                // Globo ocular e íris com volume.
+                // Globo ocular 3D: 9 x 3 direções de olhar, pupila redonda e em fenda.
+                g.EyeFrames = new int[2 * GemStyle.EyeNX * GemStyle.EyeNY];
+                for (int pu = 0; pu < 2; pu++)
+                for (int ix = 0; ix < GemStyle.EyeNX; ix++)
+                for (int iy = 0; iy < GemStyle.EyeNY; iy++)
+                    g.EyeFrames[pu * GemStyle.EyeNX * GemStyle.EyeNY + ix * GemStyle.EyeNY + iy] = g.Add(S, EyeBall3D((ix / (GemStyle.EyeNX - 1f) - 0.5f) * 0.44f, (iy / (GemStyle.EyeNY - 1f) - 0.5f) * 0.16f, pu, true));
+                for (int i = 0; i < g.Lids.Length; i++) g.Tex[g.Lids[i]] = LidTex(i / (g.Lids.Length - 1f), true);
+                // Tentáculos 3D: tubos que afinam até a ponta, serpenteando.
+                var tent = new Gem3D.GemMat { Base = new V3(0.035f, 0.022f, 0.055f), Matte = true, Gloss = 2.2f, SpecPow = 110f, Ambient = 0.30f, Rim = new V3(0.50f, 0.22f, 0.80f), Edges = false };   // gosma preta molhada
+                int[] tids = { g.M4, g.M5, g.M6 }; float[] ph = { 0f, 1.7f, 3.1f }, bd = { 1f, -1f, 1f };
+                for (int k = 0; k < 3; k++)
+                {
+                    var path = new List<V3>();
+                    for (int i = 0; i < 28; i++)
+                    {
+                        float u = i / 27f;
+                        float cx = bd[k] * 0.62f * MathF.Sin(u * 4.2f + ph[k]) * MathF.Pow(u, 0.8f);
+                        path.Add(new V3(cx, -0.95f + 1.9f * u, 0.10f * MathF.Sin(u * 3f + ph[k])));
+                    }
+                    g.Tex[tids[k]] = Gem3D.Render(Gem3D.Tube(path, u => (0.30f * MathF.Pow(1f - u, 0.9f) + 0.012f) * (1f + 0.10f * MathF.Sin(u * 17f + k * 2f) * (1f - u)), 20), 0f, 0f, g.Size[tids[k]], tent, 1f);
+                    // Ondas de gosma correndo da base para a ponta (8 quadros em ciclo).
+                    if (g.TentFrames.Length == 0) g.TentFrames = new int[24];
+                    for (int f = 0; f < 8; f++)
+                    {
+                        float phw = f / 8f * MathF.Tau;
+                        g.TentFrames[k * 8 + f] = g.Add(g.Size[tids[k]], Gem3D.Render(Gem3D.Tube(path, u => (0.30f * MathF.Pow(1f - u, 0.9f) + 0.012f) * (1f + 0.13f * MathF.Sin(u * 17f - phw + k * 2f) * (1f - u * 0.7f)), 20), 0f, 0f, g.Size[tids[k]], tent, 1f));
+                    }
+                }
+                // Fios de gosma (do grosso ao quase arrebentando) e o pedaço pendurado com gota na ponta.
+                g.GooStrand = new int[12];
+                for (int bi = 0; bi < 2; bi++)
+                for (int i = 0; i < 6; i++)
+                {
+                    float neck = 1f - i / 5f * 0.92f, bend = bi == 0 ? 0.16f : -0.12f;
+                    var sp = new List<V3>();
+                    for (int j = 0; j < 24; j++) { float u = j / 23f; sp.Add(new V3(bend * MathF.Sin(u * MathF.PI) * (0.6f + 0.4f * neck), -0.95f + 1.9f * u, 0f)); }
+                    g.GooStrand[bi * 6 + i] = g.Add(S, Gem3D.Render(Gem3D.Tube(sp, u => 0.16f * (1f - (1f - neck) * MathF.Exp(-Sq((u - 0.5f) / 0.26f))) * (1f + 0.55f * (MathF.Exp(-u / 0.06f) + MathF.Exp(-(1f - u) / 0.06f))) + 0.004f, 16), 0f, 0f, S, tent, 1f));
+                }
+                {
+                    var sp = new List<V3>();
+                    for (int j = 0; j < 24; j++) { float u = j / 23f; sp.Add(new V3(0.02f * MathF.Sin(u * 4f), -0.95f + 1.9f * u, 0f)); }
+                    // Base grossa embaixo (u = 0), afinando, com uma gota na ponta de cima.
+                    g.GooDrip = g.Add(S, Gem3D.Render(Gem3D.Tube(sp, u => 0.16f * MathF.Pow(1f - u, 1.6f) * (1f + 0.5f * MathF.Exp(-u / 0.06f)) + 0.06f * MathF.Exp(-Sq((u - 0.88f) / 0.06f)) + 0.004f, 16), 0f, 0f, S, tent, 1f));
+                }
+                // Filete de veneno: fita fina de líquido verde com a cabeça arredondada (embaixo, u = 0).
+                {
+                    var venomF = new Gem3D.GemMat { Base = new V3(0.30f, 0.85f, 0.18f), Matte = true, Gloss = 1.6f, SpecPow = 60f, Ambient = 0.45f, Rim = new V3(0.7f, 1f, 0.5f), Edges = false };
+                    var sp = new List<V3>();
+                    for (int j = 0; j < 20; j++) { float u = j / 19f; sp.Add(new V3(0.04f * MathF.Sin(u * 5f), -0.95f + 1.9f * u, 0f)); }
+                    g.Rivulet = g.Add(S, Gem3D.Render(Gem3D.Tube(sp, u => 0.10f * (0.45f + 0.55f * MathF.Exp(-u / 0.12f)) * (1f - 0.6f * u) + 0.08f * MathF.Exp(-Sq(u / 0.05f)), 12), 0f, 0f, S, venomF, 1f));
+                }
+                // Gotas de veneno em líquido 3D.
+                var venom = new Gem3D.GemMat { Base = new V3(0.30f, 0.85f, 0.18f), Matte = true, Gloss = 1.4f, Ambient = 0.3f, Rim = new V3(0.7f, 1f, 0.5f), Edges = false };
+                g.Tex[g.Venom] = Gem3D.Render(DropMesh3D(), 0f, 0f, g.Size[g.Venom], venom, 0.95f);
+                Func<float, float, float> sock = (x, y) => Eye(x / 1.05f, y / 1.05f) * 1.05f;
+                // Encaixe curvo na gosma (segue a bola).
+                g.Socket = g.Add(BatTex, Gem3D.CarvedSphere(g.Tex[g.BallFrames[0]], sock, BatTex, BallR * 0.985f, 0.08f, 0.03f, S, out var cfl));
+                // Gota de gosma preta (espirro ao ativar).
+                g.GooBlob = g.Add(64, Gem3D.Render(DropMesh3D(), 0f, 0f, 64, new Gem3D.GemMat { Base = new V3(0.035f, 0.022f, 0.055f), Matte = true, Gloss = 2.2f, SpecPow = 110f, Ambient = 0.30f, Rim = new V3(0.50f, 0.22f, 0.80f), Edges = false }, 0.95f));
+                // Gosma se abrindo para o olho sair (e fechando de volta): 8 estágios do furo.
+                g.GooLid = new int[8];
+                for (int i = 0; i < 8; i++)
+                {
+                    float k = 0.02f + i / 7f * 1.0f;
+                    g.GooLid[i] = g.Add(S, Gem3D.GooBall(S, 0.94f, 0f, gooRim, gooSheen, 29,
+                        hole: (x, y) => sock(x / k, y / k) * k, outer: (x, y) => sock(x, y) - 0.03f));
+                }
+                {
+                    float ckf = BallR / (BallR - 0.08f);
+                    var cpl = Gem3D.LiquidPool((x, y) => sock(x * ckf, y * ckf), BatTex, new System.Numerics.Vector3(0.40f, 1.0f, 0.22f), 0.04f);
+                    for (int i = 0; i < cfl.Length; i++) cpl[i * 4 + 3] *= cfl[i];
+                    g.SocketPoolTex = g.Add(BatTex, cpl);
+                }
+                // Bolhas e olhinhos da escuridão também com volume.
+                g.Tex[g.Particle] = Gem3D.Bubble3D(g.Size[g.Particle], new System.Numerics.Vector3(0.45f, 1.0f, 0.35f));
+                g.Tex[g.MiniEye] = MiniEye3D();
+            }
+            // Peças da animação de abate.
+            if (kind == Sangue) { g.KillCap = g.Add(64, LiquidBlob(0x3A0006, 0xA0101C, 0xFF9090, 0)); g.KillStreak = g.Add(64, BloodStreak()); }
+            if (kind == Corrompida) { g.KillCap = g.Add(64, LiquidBlob(0x060310, 0x1C0A2C, 0xC8A0FF, 1)); g.KillGrab = true; }
+            if (kind == Luz)
+            {
+                g.KillStreak = g.Add(64, PrismStreak(0)); g.KillStreak2 = g.Add(64, PrismStreak(1));
+                g.LightFeather = g.Add(64, LightFeatherTex());
+                g.HaloRingTex = g.Add(128, HaloRingTexture());
+                {
+                    var (lc2, lf2) = LuzGem();
+                    var dmat = new Gem3D.GemMat { Base = lc2, Deep = lc2 * 0.75f, Sparkle = 1.0f, Fire = lf2 };
+                    g.LightBat = new int[4];
+                    for (int i = 0; i < 4; i++) g.LightBat[i] = g.Add(128, Gem3D.Render(CrystalBat(0.35f + 0.65f * i / 3f), 0f, -0.05f, 128, dmat, 1f));
+                }
+                g.KillRunes = new int[9];
+                for (int i = 0; i < 9; i++)
+                {
+                    // Três paletas misturadas: dourada, branco-dourada e branca com arco-íris (prisma).
+                    int pal = i % 3;
+                    var px = pal == 0 ? GlyphTex(HolyVampRune(i), 64, 0.07f, true, 0.35f, 0xFFB830, 0xFFF0B0)
+                           : pal == 1 ? GlyphTex(HolyVampRune(i), 64, 0.07f, true, 0.35f, 0xFFE8A0, 0xFFFFFF)
+                           : RainbowTint(GlyphTex(HolyVampRune(i), 64, 0.07f, true, 0.40f, 0xE0E8FF, 0xFFFFFF), 64);
+                    g.KillRunes[i] = g.Add(64, px);
+                }
+                g.HolyFire = new int[1];
+                // Fogo sagrado como o do jogo: véus altos e translúcidos, clarão amarelo na base, lascas de luz.
+                g.Veil = new int[16];
+                for (int i = 0; i < 16; i++) g.Veil[i] = g.Add(192, Gem3D.HolyVeilSheet(192, i / 16f, 5));
+                g.FireBloom = g.Add(128, Gem3D.YellowBloom(128));
+                g.FireShard = g.Add(64, Gem3D.LightShard(64));
+                g.FireRim = g.Add(S, Paint(S, (x, y) => { float r = Len(x, y); float d = MathF.Abs(r - 0.44f); float n2 = Fbm(MathF.Atan2(y, x) * 2f + 3f, r * 6f); float a = MathF.Exp(-Sq(d / 0.05f)) * Clamp01(n2 * 2f - 0.5f); float hu = MathF.Atan2(y, x) / MathF.Tau * 2f; var rc = (0.5f + 0.5f * MathF.Cos(hu * MathF.Tau), 0.5f + 0.5f * MathF.Cos(hu * MathF.Tau + 2.1f), 0.5f + 0.5f * MathF.Cos(hu * MathF.Tau + 4.2f)); var cc = Mix(Mix(rc, (1f, 1f, 1f), 0.5f), (1f, 1f, 1f), Clamp01(a)); return (cc.r, cc.g, cc.b, Clamp01(a * 1.4f)); }));
+            }
+            if (kind == Caos)
+            {
+                g.KillRunes = new int[9];
+                for (int i = 0; i < 9; i++) g.KillRunes[i] = g.Add(64, GlyphTex(SmallRune(i * 4 + 1 + i / 3), 64, 0.085f, true, 0.9f, 0xC050FF, 0xFFF0FF));
+            }
+            if (kind == Sangue)
+            {
+                g.Tex[g.Ball] = Gem3D.MineralStone(g.Size[g.Ball], 0.94f, rimC);
+                g.OpaqueBall = true;
+                Func<float, float, float> sock = (x, y) => Drop(x / 1.06f, (y + 0.02f) / 1.06f) * 1.06f;
+                // Encaixe curvo (segue a bola), com sangue no fundo.
+                const float sdep = 0.08f;
+                g.Socket = g.Add(BatTex, Gem3D.CarvedSphere(g.Tex[g.Ball], sock, BatTex, BallR * 0.985f, sdep, 0.03f, g.Size[g.Ball], out var sfloor));
+                float skf = BallR / (BallR - sdep);
+                var spool = Gem3D.LiquidPool((x, y) => sock(x * skf, y * skf), BatTex, new System.Numerics.Vector3(0.75f, 0.04f, 0.08f), 0.04f);
+                for (int i = 0; i < sfloor.Length; i++) spool[i * 4 + 3] *= sfloor[i];
+                g.SocketPoolTex = g.Add(BatTex, spool);
+                // Veias de sangue dentro da hematita (pulsam com o coração) e anel do respingo ao ativar.
+                g.BloodVeins = g.Add(BatTex, Gem3D.Veins(BatTex, 0.94f, 13, new System.Numerics.Vector3(0.85f, 0.05f, 0.10f), new System.Numerics.Vector3(1.0f, 0.55f, 0.50f)));
+                g.BloodRing = g.Add(S, Paint(S, (x, y) => { float r = Len(x, y), an = MathF.Atan2(y, x); float w = 0.86f + 0.04f * MathF.Sin(an * 9f) + 0.02f * MathF.Sin(an * 23f); float l = MathF.Abs(r - w); float c = MathF.Exp(-Sq(l / 0.03f)), h = MathF.Exp(-Sq(l / 0.10f)) * 0.5f; var col = Mix(Rgb(0x5A0010), Rgb(0xE02030), c); return (col.r, col.g, col.b, Clamp01(c + h)); }));
+                LegendSangue3D(g, rimC);
+            }
+            else if (!g.OpaqueBall) Gem3D.SphereShade(g.Tex[g.Ball], g.Size[g.Ball], 0.94f, rimC);
+        }
         g.MeasureExtents();
         return g;
+    }
+
+    /// <summary>Estilo 3D: as mesmas artes, com relevo, luz e materiais.</summary>
+    internal const bool Mode3D = true;   // o estilo clássico 2D foi removido: as joias são sempre 3D
+    /// <summary>Cor do sol da Luz no estilo 3D (config [Visual] CorLuz).</summary>
+    internal static string LuzColor = "Diamante";
+    static (System.Numerics.Vector3 c, bool fire) LuzGem() => LuzColor switch
+    {
+        "TopazioDourado" => (new System.Numerics.Vector3(1.0f, 0.72f, 0.22f), false),
+        "Citrino" => (new System.Numerics.Vector3(1.0f, 0.85f, 0.35f), false),
+        "Champanhe" => (new System.Numerics.Vector3(0.95f, 0.82f, 0.62f), true),
+        "SafiraClara" => (new System.Numerics.Vector3(0.60f, 0.78f, 1.0f), true),
+        _ => (new System.Numerics.Vector3(0.92f, 0.93f, 0.98f), true),
+    };
+
+    static (float r, float g, float b) energyOf(int e) => e switch
+    {
+        Gelo => Rgb(0x8AD8FF), Caos => Rgb(0xC060FF), Tempestade => Rgb(0x8AD8FF),
+        Corrompida => Rgb(0x9CF050), Luz => Rgb(0xFFE8A8), _ => Rgb(0xFF3A50),
+    };
+
+    /// <summary>
+    /// Pós-processo 3D de uma camada: tira um mapa de altura da própria forma (cúpula a partir da borda +
+    /// detalhe da pintura), calcula as normais e ilumina com luz principal quente de cima/esquerda,
+    /// preenchimento frio, contraluz na cor do elemento e brilho especular. Camadas difusas (névoa, brilho,
+    /// fogo) ganham só volume suave para não virarem "plástico".
+    /// </summary>
+    static void Shade3D(float[] px, int n, (float r, float g, float b) rimCol)
+    {
+        int N = n * n;
+        int solid = 0, any = 0;
+        for (int i = 0; i < N; i++) { float a = px[i * 4 + 3]; if (a > 0.02f) any++; if (a > 0.9f) solid++; }
+        if (any == 0) return;
+        bool isSolid = solid > any * 0.35f;
+
+        // Distância até a borda (chanfro 3-4), só dentro da forma.
+        var d = new float[N];
+        const float INF = 1e6f;
+        for (int i = 0; i < N; i++) d[i] = px[i * 4 + 3] > 0.5f ? INF : 0f;
+        for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                int i = y * n + x; if (d[i] == 0f) continue;
+                float v = d[i];
+                if (x > 0) v = MathF.Min(v, d[i - 1] + 1f);
+                if (y > 0) v = MathF.Min(v, d[i - n] + 1f);
+                if (x > 0 && y > 0) v = MathF.Min(v, d[i - n - 1] + 1.414f);
+                if (x < n - 1 && y > 0) v = MathF.Min(v, d[i - n + 1] + 1.414f);
+                if (x == 0 || y == 0 || x == n - 1 || y == n - 1) v = MathF.Min(v, 1f);
+                d[i] = v;
+            }
+        for (int y = n - 1; y >= 0; y--)
+            for (int x = n - 1; x >= 0; x--)
+            {
+                int i = y * n + x; if (d[i] == 0f) continue;
+                float v = d[i];
+                if (x < n - 1) v = MathF.Min(v, d[i + 1] + 1f);
+                if (y < n - 1) v = MathF.Min(v, d[i + n] + 1f);
+                if (x < n - 1 && y < n - 1) v = MathF.Min(v, d[i + n + 1] + 1.414f);
+                if (x > 0 && y < n - 1) v = MathF.Min(v, d[i + n - 1] + 1.414f);
+                d[i] = v;
+            }
+
+        float R = MathF.Max(2f, n * (isSolid ? 0.07f : 0.12f));
+        var h = new float[N];
+        for (int i = 0; i < N; i++)
+        {
+            float a = px[i * 4 + 3];
+            float dd = MathF.Min(d[i] + a * 0.5f, R) / R;            // 0 na borda .. 1 dentro
+            float dome = MathF.Sqrt(MathF.Max(0f, 1f - (1f - dd) * (1f - dd)));
+            float lum = 0.3f * px[i * 4] + 0.55f * px[i * 4 + 1] + 0.15f * px[i * 4 + 2];
+            h[i] = dome * R + (isSolid ? lum * R * 0.25f : a * R * 0.6f);
+        }
+
+        // Luzes (x para a direita, y para cima, z para fora da tela).
+        float lx = -0.50f, ly = 0.62f, lz = 0.60f; float ll = MathF.Sqrt(lx * lx + ly * ly + lz * lz); lx /= ll; ly /= ll; lz /= ll;
+        float hx = lx, hy = ly, hz = lz + 1f; float hl = MathF.Sqrt(hx * hx + hy * hy + hz * hz); hx /= hl; hy /= hl; hz /= hl;
+        var res = new float[N * 4];
+        for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                int i = y * n + x;
+                float a = px[i * 4 + 3];
+                res[i * 4 + 3] = a;
+                if (a <= 0.001f) continue;
+                float hL = h[y * n + Math.Max(0, x - 1)], hR = h[y * n + Math.Min(n - 1, x + 1)];
+                float hD = h[Math.Max(0, y - 1) * n + x], hU = h[Math.Min(n - 1, y + 1) * n + x];
+                float nx = (hL - hR) * 0.5f, ny = (hD - hU) * 0.5f, nz = 1f;
+                float nl = MathF.Sqrt(nx * nx + ny * ny + nz * nz); nx /= nl; ny /= nl; nz /= nl;
+                float ndl = MathF.Max(0f, nx * lx + ny * ly + nz * lz);
+                float r = px[i * 4], g = px[i * 4 + 1], b = px[i * 4 + 2];
+                if (isSolid)
+                {
+                    float diff = 0.30f + 0.95f * ndl;
+                    float fill = MathF.Max(0f, -nx * 0.6f - ny * 0.3f) * 0.18f;          // preenchimento frio da direita/baixo
+                    float spec = MathF.Pow(MathF.Max(0f, nx * hx + ny * hy + nz * hz), 36f) * 0.55f;
+                    float rim = MathF.Pow(1f - nz, 2.2f) * MathF.Max(0f, -ny * 0.5f + nx * 0.5f + 0.4f) * 0.55f;
+                    r = r * diff + fill * 0.55f + spec * 1.00f + rim * rimCol.r;
+                    g = g * diff + fill * 0.70f + spec * 0.96f + rim * rimCol.g;
+                    b = b * diff + fill * 1.00f + spec * 0.88f + rim * rimCol.b;
+                }
+                else
+                {
+                    // Volume suave: mais claro em cima/esquerda, mais denso no meio.
+                    float vol = 0.78f + 0.40f * ndl;
+                    r *= vol; g *= vol; b *= vol;
+                }
+                res[i * 4] = Math.Clamp(r, 0f, 1f); res[i * 4 + 1] = Math.Clamp(g, 0f, 1f); res[i * 4 + 2] = Math.Clamp(b, 0f, 1f);
+            }
+        Array.Copy(res, px, res.Length);
+    }
+
+    /// <summary>Gota de líquido 3D (sólido de revolução, ponta em cima).</summary>
+    static Gem3D.Mesh DropMesh3D() => Gem3D.Sheet((u, v) =>
+    {
+        float th = u * MathF.Tau, y = 0.95f - 1.9f * v;
+        float k = (0.95f - y) / 1.9f;
+        float r = k < 0.62f ? 0.62f * MathF.Pow(k / 0.62f, 1.25f) : 0.62f * MathF.Sqrt(MathF.Max(0f, 1f - MathF.Pow((k - 0.62f) / 0.38f, 2f)));
+        return new V3(MathF.Cos(th) * r * 0.85f, y * 0.92f, MathF.Sin(th) * r * 0.85f);
+    }, 20, 18);
+
+    /// <summary>Sangue Lendária em 3D: chifres de obsidiana com sulcos, gola de vampiro e morcegos.</summary>
+    static void LegendSangue3D(GemStyle g, System.Numerics.Vector3 rimC)
+    {
+        // Chifres: mesmo caminho do 2D (Bézier), um de cada lado, inclinados para trás.
+        var horn = new Gem3D.GemMat { Base = new V3(0.16f, 0.11f, 0.13f), Matte = true, Gloss = 0.35f, Rim = rimC * 0.6f, Edges = false };
+        Gem3D.Mesh Horn(float side)
+        {
+            var path = new List<V3>();
+            for (int i = 0; i < 30; i++)
+            {
+                float u = i / 29f, v = 1f - u;
+                float hx = v * v * v * 0.30f + 3 * v * v * u * 0.52f + 3 * v * u * u * 0.86f + u * u * u * 0.74f;
+                float hy = v * v * v * 0.22f + 3 * v * v * u * 0.50f + 3 * v * u * u * 0.52f + u * u * u * 0.92f;
+                path.Add(new V3(side * hx, hy, -0.25f * u));
+            }
+            // Sulcos: o raio ondula ao longo do chifre.
+            return Gem3D.Tube(path, u => (0.15f * MathF.Pow(1f - u, 0.8f) + 0.008f) * (1f - 0.04f * MathF.Pow(MathF.Abs(MathF.Sin(u * 22f)), 6f)), 14);
+        }
+        g.Tex[g.M1] = Gem3D.Render(Gem3D.Merge((Horn(1f), V3.Zero, 1f), (Horn(-1f), V3.Zero, 1f)), 0f, 0.1f, g.Size[g.M1], horn, 1f);
+
+        // Gola: forro de cetim vermelho com pregas (kind 2), borda preta grossa contornando as pontas.
+        var cloth = new Gem3D.GemMat { Base = new V3(0.07f, 0.06f, 0.08f), Alt = new V3(0.50f, 0.03f, 0.08f), Matte = true, Gloss = 0.6f, Ambient = 0.42f, Rim = rimC * 0.4f, Edges = false };
+        // Capa de gola alta e rígida: sai larga dos ombros, sobe rente à bola e a borda de cima
+        // vira para fora em ondas, mostrando o preto de fora; por dentro, forro vermelho com dobras.
+        V3 Inner(float sgn, float u)
+        {
+            // Rente à pedra, por trás dela: arco da borda, de um pouco abaixo do meio até o alto.
+            float a = (-20f + 95f * u) * MathF.PI / 180f;
+            return new V3(sgn * MathF.Cos(a) * 0.40f, 0.05f + MathF.Sin(a) * 0.40f, -0.40f);
+        }
+        V3 Outer(float sgn, float u)
+        {
+            float v = 1f - u;
+            // Borda de fora em curva: sai larga do ombro, entra na cintura e varre para fora até a ponta alta.
+            // Nasce na borda da pedra (lado, um pouco abaixo do meio) e varre em curva para fora até a ponta alta.
+            float x = v * v * v * 0.44f + 3 * v * v * u * 0.70f + 3 * v * u * u * 0.52f + u * u * u * 1.02f;
+            float y = v * v * v * -0.12f + 3 * v * v * u * 0.10f + 3 * v * u * u * 0.55f + u * u * u * 0.96f;
+            return new V3(sgn * x, y, -0.15f + 0.12f * u);
+        }
+        V3 Cloth(float sgn, float u, float v)
+        {
+            var p = V3.Lerp(Inner(sgn, u), Outer(sgn, u), v);
+            float fold = (0.035f * MathF.Sin(v * 3.5f * MathF.PI + 0.4f) + 0.012f * MathF.Sin(v * 8f * MathF.PI + 1.7f)) * (0.3f + 0.7f * u) * MathF.Sin(MathF.Min(1f, v * 1.4f) * MathF.PI * 0.5f);   // dobras subindo da gola
+            p.Z += fold;
+            return p;
+        }
+        var parts = new List<(Gem3D.Mesh, V3, float)>();
+        for (int sd = -1; sd <= 1; sd += 2)
+        {
+            float sg = sd;
+            parts.Add((Gem3D.Sheet((u, v) => Cloth(sg, u, v), 60, 24, 2), V3.Zero, 1f));
+            // Borda virada: o tecido dobra para fora e para trás (lado preto), mais na parte de cima.
+            parts.Add((Gem3D.Sheet((u, w) =>
+            {
+                var a = Cloth(sg, u, 1f);
+                // A borda enrola para fora; perto da ponta vira um caracol (como na referência).
+                var t = Cloth(sg, Math.Min(1f, u + 0.02f), 1f) - Cloth(sg, Math.Max(0f, u - 0.02f), 1f);
+                var outDir = V3.Normalize(new V3(t.Y * sg, -t.X * sg, 0f) * sg);
+                if (outDir.X * sg < 0f) outDir = -outDir;
+                float width = 0.04f + 0.12f * MathF.Pow(u, 3f);
+                float ang = w * MathF.PI * (0.6f + 0.6f * u * u);
+                return a + outDir * (MathF.Sin(ang) * width) + new V3(0, 0, (1f - MathF.Cos(ang)) * width * 0.8f + 0.01f);
+            }, 60, 6, 0), V3.Zero, 1f));
+        }
+        g.Tex[g.Collar] = Gem3D.Render(Gem3D.Merge(parts.ToArray()), 0f, 0f, g.Size[g.Collar], cloth, 0.75f);
+        g.CollarScale = 1f / 0.75f;
+
+        // Morcegos continuam em silhueta: pequenos demais para o 3D ler bem.
+        g.Tex[g.Eyes] = Gem3D.EyePair(g.Size[g.Eyes], 0.24f / 0.70f, rimC);
+        // Gotas de sangue pingando: líquido 3D brilhante (sólido de revolução em forma de gota).
+        var liquid = new Gem3D.GemMat { Base = new V3(0.62f, 0.02f, 0.07f), Matte = true, Gloss = 1.4f, Ambient = 0.25f, Rim = rimC, Edges = false };
+        var dropMesh = DropMesh3D();
+        g.Tex[g.Particle] = Gem3D.Render(dropMesh, 0f, 0f, g.Size[g.Particle], liquid, 0.95f);
     }
 
     delegate float Sd(float x, float y);
@@ -3093,6 +5517,752 @@ internal static class GemArt
         });
     }
 
+    internal const int BatTex = 256;
+
+    /// <summary>Tinge o brilho de uma runa com arco-íris (o traço fica branco, o halo colorido).</summary>
+    static float[] RainbowTint(float[] px, int n)
+    {
+        for (int j = 0; j < n; j++) for (int i = 0; i < n; i++)
+        {
+            int o = (j * n + i) * 4; if (px[o + 3] <= 0f) continue;
+            float lum = (px[o] + px[o + 1] + px[o + 2]) / 3f;
+            float h = ((i + j) / (float)(2 * n) * 1.5f) % 1f;
+            float r = 0.5f + 0.5f * MathF.Cos(h * MathF.Tau), g = 0.5f + 0.5f * MathF.Cos(h * MathF.Tau + 2.1f), b = 0.5f + 0.5f * MathF.Cos(h * MathF.Tau + 4.2f);
+            float k = Clamp01((0.97f - px[o + 3]) / 0.45f) * 0.9f;   // halo colorido, traço branco
+            px[o] = px[o] * (1f - k) + (0.45f + 0.55f * r) * k; px[o + 1] = px[o + 1] * (1f - k) + (0.45f + 0.55f * g) * k; px[o + 2] = px[o + 2] * (1f - k) + (0.45f + 0.55f * b) * k;
+        }
+        return px;
+    }
+
+    /// <summary>
+    /// Labareda de fogo sagrado (como a do jogo): alta, fina e translúcida, amarelo-claro com toque verde-limão
+    /// nas bordas e miolo quase branco embaixo; ondula com a fase.
+    /// </summary>
+    static float[] HolyFireTex(float ph) => Paint(128, (x, y) =>
+    {
+        float v = (y + 1f) * 0.5f;
+        if (v <= 0f) return default;
+        float n = Fbm(x * 1.8f + ph * 3f, y * 1.2f - ph * 7f) - 0.5f;
+        float n2 = Fbm(x * 4f + 7f, y * 3f - ph * 11f) - 0.5f;
+        float xx = x - n * 0.55f * v - n2 * 0.12f;
+        float w = 0.42f * MathF.Pow(1f - v, 0.6f) * (0.85f + 0.5f * n2) * Clamp01(0.5f + v * 4f);
+        float d = MathF.Abs(xx) / MathF.Max(0.01f, w);
+        if (d >= 1f) return default;
+        float body = (1f - d) * Clamp01(v * 6f) * MathF.Pow(1f - v, 0.5f);
+        // Fiapos: buracos que sobem dentro da chama (deixa translúcida e "fantasmagórica").
+        float wisp = 0.55f + 0.45f * Fbm(x * 3f + 2f, y * 2.2f - ph * 9f);
+        float a = Clamp01(body * 1.8f) * wisp;
+        float core = Clamp01((1f - d) * 1.6f - 0.6f) * Clamp01(1f - v * 1.6f);
+        var c = Mix(Rgb(0xB8E040), Rgb(0xFFF060), Clamp01((1f - d) * 1.4f));
+        c = Mix(c, Rgb(0xFFFFE8), core);
+        return (c.r, c.g, c.b, Clamp01(a + core * 0.4f));
+    });
+
+    /// <summary>Auréola (anel de luz, achatado depois pelo sprite): aro dourado-branco com brilho.</summary>
+    static float[] HaloRingTexture() => Paint(128, (x, y) =>
+    {
+        float r = Len(x, y), d = MathF.Abs(r - 0.78f);
+        float core = MathF.Exp(-Sq(d / 0.05f)), glow = MathF.Exp(-Sq(d / 0.16f)) * 0.6f;
+        var c = Mix(Rgb(0xFFC850), Rgb(0xFFFFF4), core);
+        return (c.r, c.g, c.b, Clamp01(core + glow));
+    });
+
+    /// <summary>Pena de luz: haste branca, barbas douradas translúcidas com brilho de arco-íris na ponta.</summary>
+    static float[] LightFeatherTex() => Paint(64, (x, y) =>
+    {
+        float v = (y + 1f) * 0.5f;
+        float w = 0.55f * MathF.Sin(MathF.PI * MathF.Pow(Clamp01(v), 0.8f)) * (v < 0.08f ? 0f : 1f);
+        float d = MathF.Abs(x - 0.08f * MathF.Sin(v * 3f));
+        if (d > w || w <= 0f) return default;
+        float shaft = MathF.Exp(-Sq(d / 0.04f));
+        float barbs = 0.55f + 0.45f * MathF.Sin((d * 30f) - v * 40f);
+        float edge = Clamp01((w - d) / 0.12f);
+        float h = Clamp01(v * 1.2f + d);
+        var rb = (0.5f + 0.5f * MathF.Cos(h * MathF.Tau), 0.5f + 0.5f * MathF.Cos(h * MathF.Tau + 2.1f), 0.5f + 0.5f * MathF.Cos(h * MathF.Tau + 4.2f));
+        var c = Mix(Rgb(0xFFE6A0), Mix(rb, (1f, 1f, 1f), 0.5f), Clamp01(d / w) * 0.6f);
+        c = Mix(c, (1f, 1f, 1f), shaft);
+        return (c.r, c.g, c.b, Clamp01((0.35f + 0.5f * barbs) * edge + shaft));
+    });
+
+    /// <summary>Fio de luz prismática (vertical): miolo branco quente, franjas de arco-íris dos lados e brilho suave.</summary>
+    static float[] PrismStreak(int variant) => Paint(64, (x, y) =>
+    {
+        float d = x * (variant == 0 ? 1f : -1f);
+        float core = MathF.Exp(-Sq(d / 0.10f)), glow = MathF.Exp(-Sq(d / 0.45f)) * 0.55f;
+        float ends = Clamp01((0.98f - MathF.Abs(y)) / 0.25f);
+        // Arco-íris ao longo da largura (como luz passando num prisma).
+        float h = Clamp01((d + 0.45f) / 0.9f);
+        var rb = (0.5f + 0.5f * MathF.Cos(h * MathF.Tau), 0.5f + 0.5f * MathF.Cos(h * MathF.Tau + 2.1f), 0.5f + 0.5f * MathF.Cos(h * MathF.Tau + 4.2f));
+        var c = Mix(Mix(rb, (1f, 1f, 1f), 0.25f), (1f, 0.99f, 0.94f), Clamp01(core * 1.3f));
+        return (c.r, c.g, c.b, Clamp01(core + glow) * ends);
+    });
+
+    /// <summary>Fita fina de sangue (vertical): miolo vermelho vivo, borda escura e um brilho suave em volta.</summary>
+    static float[] BloodStreak() => Paint(64, (x, y) =>
+    {
+        float d = MathF.Abs(x);
+        float core = MathF.Exp(-Sq(d / 0.16f)), glow = MathF.Exp(-Sq(d / 0.42f)) * 0.45f;
+        float ends = Clamp01((0.98f - MathF.Abs(y)) / 0.25f);
+        var c = Mix(Rgb(0x5A0008), Rgb(0xE01828), core);
+        c = Mix(c, Rgb(0xFF8080), Clamp01(MathF.Exp(-Sq((x + 0.06f) / 0.05f)) * 0.6f));
+        return (c.r, c.g, c.b, Clamp01(core + glow) * ends);
+    });
+
+    /// <summary>
+    /// Bolha de líquido (redonda, um pouco ovalada): sombreada como esfera com reflexo molhado.
+    /// mode 0 sangue, 1 gosma (fibras e reflexo verde), 2 plasma de luz (branco leitoso com franja arco-íris).
+    /// </summary>
+    static float[] LiquidBlob(int dark, int mid, int hi, int mode) => Paint(64, (x, y) =>
+    {
+        float r = Len(x, y) / 0.92f;
+        float a = Cover((r - 1f) * 0.46f, 64);
+        if (a <= 0f) return default;
+        float z = MathF.Sqrt(MathF.Max(0f, 1f - r * r));
+        var n = new System.Numerics.Vector3(x / 0.92f, y / 0.92f, z);
+        var L = System.Numerics.Vector3.Normalize(new System.Numerics.Vector3(-0.45f, 0.65f, 0.62f));
+        float diff = Math.Max(0f, System.Numerics.Vector3.Dot(n, L));
+        float spec = MathF.Pow(Math.Max(0f, System.Numerics.Vector3.Dot(n, System.Numerics.Vector3.Normalize(L + System.Numerics.Vector3.UnitZ))), mode == 2 ? 20f : 60f);
+        var c = Mix(Rgb(dark), Rgb(mid), 0.3f + 0.7f * diff);
+        if (mode == 1)
+        {
+            float fib = 1f - MathF.Abs(2f * Fbm(x * 3f + 1f, y * 3f) - 1f);
+            c = Mix(c, Rgb(0x2A8A20), Clamp01(MathF.Pow(fib, 6f) * z) * 0.6f);
+        }
+        if (mode == 2)
+        {
+            // Plasma: macio (sem borda dura, as bolhas se fundem), miolo branco e cores de opala espalhadas.
+            float h = (Fbm(x * 1.6f + 3f, y * 1.6f) * 2.2f + x * 0.4f) % 1f;
+            var rb = (0.5f + 0.5f * MathF.Cos(h * MathF.Tau), 0.5f + 0.5f * MathF.Cos(h * MathF.Tau + 2.1f), 0.5f + 0.5f * MathF.Cos(h * MathF.Tau + 4.2f));
+            c = Mix((1f, 1f, 1f), Mix(rb, (1f, 1f, 1f), 0.35f), Clamp01((r - 0.15f) / 0.6f) * 0.8f);
+            a = Clamp01(MathF.Exp(-r * r * 2.2f) * 1.25f);
+            return (c.r, c.g, c.b, a);
+        }
+        c = Mix(c, Rgb(hi), Clamp01(spec * 1.2f));
+        float rim = MathF.Pow(1f - z, 3f) * (mode == 2 ? 0f : 0.5f);
+        c = Mix(c, Rgb(dark), rim);
+        return (c.r, c.g, c.b, a);
+    });
+
+    /// <summary>Gomo de líquido para os fios: cilindro com brilho molhado no meio e borda escura (gosma: com fibras).</summary>
+    static float[] LiquidCapsule(int dark, int mid, int hi, bool goo) => Paint(64, (x, y) =>
+    {
+        float d = Box(x, y, 0.55f, 0.95f - 0.55f);
+        float cap = Len(x, MathF.Max(0f, MathF.Abs(y) - 0.40f)) - 0.55f;
+        float a = Cover(cap * 0.5f, 64);
+        if (a <= 0f) return default;
+        float u = Clamp01(1f - MathF.Abs(x) / 0.55f);                     // 1 no meio
+        var c = Mix(Rgb(dark), Rgb(mid), MathF.Pow(u, 0.7f));
+        float spec = MathF.Exp(-Sq((x + 0.18f) / 0.10f)) * 0.9f;
+        if (goo)
+        {
+            float fib = 1f - MathF.Abs(2f * Fbm(x * 3f, y * 1.2f + 3f) - 1f);
+            spec *= 0.6f + 0.8f * MathF.Pow(fib, 3f);
+            c = Mix(c, Rgb(0x2A8A20), Clamp01(MathF.Pow(fib, 6f) * u) * 0.5f);
+        }
+        c = Mix(c, Rgb(hi), Clamp01(spec));
+        return (c.r, c.g, c.b, a);
+    });
+
+    /// <summary>Língua de fogo sagrado (de baixo para cima): miolo branco, amarelo-ouro, borda laranja, ondulando.</summary>
+    static float[] HolyFlameTex(float ph) => Paint(128, (x, y) =>
+    {
+        float v = (y + 1f) * 0.5f;                                        // 0 base .. 1 ponta
+        float n = Fbm(x * 2.2f + 3f, y * 1.5f - ph * 6f) - 0.5f;
+        float w = 0.88f * MathF.Pow(1f - v, 0.55f) * (0.85f + 0.6f * n) * Clamp01(0.55f + v * 3f);
+        float xx = x - n * 0.35f * v;
+        float d = MathF.Abs(xx) / MathF.Max(0.01f, w);
+        if (d >= 1f || v <= 0f) return default;
+        float core = Clamp01(1f - d * 1.4f) * Clamp01(1f - v * 1.3f);
+        float a = Clamp01((1f - d) * 2.2f) * Clamp01(v * 8f) * Clamp01((1f - v) * 3f);
+        var c = Mix(Rgb(0xFF9A20), Rgb(0xFFD84A), Clamp01((1f - d) * 1.3f));
+        c = Mix(c, Rgb(0xFFFBE8), Clamp01(core * 1.5f));
+        return (c.r, c.g, c.b, a);
+    });
+
+
+
+    /// <summary>Obelisco de pedra escura (afinando, com ponta piramidal), esticado para o sprite 0.62 x 1.55.</summary>
+    static float[] RunePillar3D()
+    {
+        const float SX = 0.31f, SY = 0.775f;
+        var m = new Gem3D.Mesh();
+        float[] ys = { -0.74f, 0.52f, 0.74f }; float[] ws = { 0.15f, 0.10f, 0f };
+        for (int l = 0; l < 2; l++)
+            for (int i = 0; i < 4; i++) { float a = i * MathF.PI / 2f + MathF.PI / 4f + 0.35f; m.V.Add(new V3(MathF.Cos(a) * ws[l], ys[l], MathF.Sin(a) * ws[l])); }
+        m.V.Add(new V3(0, ys[2], 0));
+        for (int i = 0; i < 4; i++) { int j = (i + 1) % 4; m.F.Add((i, j, 4 + j, 0)); m.F.Add((i, 4 + j, 4 + i, 0)); m.F.Add((4 + i, 4 + j, 8, 0)); }
+        var tilt = System.Numerics.Matrix4x4.CreateRotationX(-0.25f);
+        var r = new Gem3D.Mesh();
+        foreach (var v in m.V) { var w = V3.Transform(v, tilt); r.V.Add(new V3(w.X / SX, w.Y / SY, w.Z / SX)); }
+        foreach (var f in m.F) r.F.Add(f);
+        var stone = new Gem3D.GemMat { Base = new V3(0.20f, 0.23f, 0.30f), Matte = true, Ambient = 0.30f, Gloss = 0.3f, Rim = new V3(0.25f, 0.45f, 0.8f), Edges = true };
+        var px = Gem3D.Render(r, 0f, 0f, 256, stone, 1f);
+        // Textura de pedra por cima (ruído escurecendo/clareando).
+        for (int j = 0; j < 256; j++) for (int i = 0; i < 256; i++)
+        {
+            int o = (j * 256 + i) * 4; if (px[o + 3] <= 0f) continue;
+            float n = 0.75f + 0.5f * Fbm(i * 0.05f, j * 0.02f);
+            px[o] *= n; px[o + 1] *= n; px[o + 2] *= n;
+        }
+        return px;
+    }
+
+    /// <summary>Nuvem de tempestade 3D: bolhas de vapor escuras, base reta, topo claro pela luz e borda azulada.</summary>
+    static float[] StormCloud3D()
+    {
+        var rnd = new Random(4);
+        var parts = new List<(Gem3D.Mesh, V3, float)>();
+        for (int i = 0; i < 16; i++)
+        {
+            float x = ((float)rnd.NextDouble() - 0.5f) * 1.3f, y = (float)rnd.NextDouble() * 0.22f * (1f - MathF.Abs(x));
+            float r = 0.16f + 0.14f * (float)rnd.NextDouble() * (1f - MathF.Abs(x) * 0.7f);
+            parts.Add((Gem3D.Ellipsoid(new V3(r, r * 0.85f, r), 14, 10), new V3(x, y, ((float)rnd.NextDouble() - 0.5f) * 0.3f), 1f));
+        }
+        var mat = new Gem3D.GemMat { Base = new V3(0.30f, 0.33f, 0.42f), Matte = true, Ambient = 0.35f, Gloss = 0.05f, Rim = new V3(0.35f, 0.55f, 0.9f), Edges = false };
+        var px = Gem3D.Render(Gem3D.Merge(parts.ToArray()), 0f, 0.2f, 256, mat, 0.95f);
+        for (int j = 0; j < 256; j++) for (int i = 0; i < 256; i++)
+        {
+            int o = (j * 256 + i) * 4; if (px[o + 3] <= 0f) continue;
+            float n = 0.8f + 0.4f * Fbm(i * 0.04f, j * 0.04f);
+            px[o] *= n; px[o + 1] *= n; px[o + 2] *= n;
+        }
+        return px;
+    }
+
+    /// <summary>
+    /// Bobina de Tesla 3D, montada em medidas reais e esticada para o retângulo do sprite (0.72 x 1.55):
+    /// haste enrolada em fio de cobre, três anéis de cobre e esfera prateada no topo. glow = só o anel k aceso.
+    /// </summary>
+    static float[] TeslaCoil3D(int glow = -1)
+    {
+        const float SX = 0.36f, SY = 0.775f;                       // meia-largura e meia-altura do sprite
+        var tilt = System.Numerics.Matrix4x4.CreateRotationX(-0.42f);
+        float[] ry = { -0.42f, -0.06f, 0.26f }, rr = { 0.30f, 0.22f, 0.15f };
+        var parts = new List<(Gem3D.Mesh, V3, float)>();
+        Gem3D.Mesh X(Gem3D.Mesh m, System.Numerics.Matrix4x4 M)
+        {
+            var r = new Gem3D.Mesh();
+            foreach (var v in m.V) { var w = V3.Transform(v, M); r.V.Add(new V3(w.X / SX, w.Y / SY, w.Z / SX)); }
+            foreach (var f in m.F) r.F.Add(f);
+            return r;
+        }
+        for (int k = 0; k < 3; k++)
+        {
+            if (glow >= 0 && k != glow) continue;
+            var tor = Gem3D.Torus(rr[k], 0.020f, 48, 10);
+            parts.Add((X(tor, System.Numerics.Matrix4x4.CreateRotationX(MathF.PI / 2f) * System.Numerics.Matrix4x4.CreateTranslation(0, ry[k], 0) * tilt), V3.Zero, 1f));
+        }
+        if (glow >= 0)
+        {
+            var gm = new Gem3D.GemMat { Base = new V3(0.35f, 0.95f, 1.0f), Matte = true, Ambient = 1.0f, Gloss = 0.6f, Edges = false };
+            return Gem3D.Render(Gem3D.Merge(parts.ToArray()), 0f, 0f, 256, gm, 1f);
+        }
+        var hel = new List<V3>();
+        for (int i = 0; i <= 300; i++) { float u = i / 300f, a = u * MathF.Tau * 30f; hel.Add(new V3(MathF.Cos(a) * 0.026f, -0.70f + 1.22f * u, MathF.Sin(a) * 0.026f)); }
+        parts.Add((X(Gem3D.Tube(hel, _ => 0.008f, 6), tilt), V3.Zero, 1f));
+        var rod = new List<V3> { new(0, -0.74f, 0), new(0, 0.60f, 0) };
+        parts.Add((X(Gem3D.Tube(rod, _ => 0.016f, 10), tilt), V3.Zero, 1f));
+        // Base: disco de cobre embaixo.
+        var bse = Gem3D.Ellipsoid(new V3(0.12f, 0.03f, 0.12f), 20, 6);
+        parts.Add((X(bse, System.Numerics.Matrix4x4.CreateTranslation(0, -0.72f, 0) * tilt), V3.Zero, 1f));
+        var copper = new Gem3D.GemMat { Base = new V3(0.95f, 0.52f, 0.28f), Metal = true, Edges = false };
+        var px = Gem3D.Render(Gem3D.Merge(parts.ToArray()), 0f, 0f, 256, copper, 1f);
+        var silver = new Gem3D.GemMat { Base = new V3(0.82f, 0.86f, 0.95f), Metal = true, Edges = false };
+        var ball = X(Gem3D.Ellipsoid(new V3(0.075f, 0.075f, 0.075f), 16, 10), System.Numerics.Matrix4x4.CreateTranslation(0, 0.66f, 0) * tilt);
+        return Gem3D.Over(px, Gem3D.Render(ball, 0f, 0f, 256, silver, 1f));
+    }
+
+
+    /// <summary>
+    /// Transforma a estrela renderizada em energia: a forma e as facetas ficam (pela luz), mas a cor vira plasma roxo,
+    /// escuro no miolo e claro nas pontas, com fios de energia correndo para fora e bordas acesas.
+    /// </summary>
+    static void PlasmaStar(float[] px, int n, int frame, bool spike = false)
+    {
+        var a0 = new float[n * n];
+        for (int i = 0; i < n * n; i++) a0[i] = px[i * 4 + 3];
+        for (int j = 0; j < n; j++)
+            for (int i = 0; i < n; i++)
+            {
+                int o = (j * n + i) * 4;
+                float a = px[o + 3];
+                if (a <= 0f) continue;
+                float x = (i + 0.5f) / n * 2f - 1f, y = (j + 0.5f) / n * 2f - 1f;
+                float r = Len(x, y), ang = MathF.Atan2(y, x);
+                float lum = (px[o] + px[o + 1] + px[o + 2]) / 3f;
+                // Fios de plasma: listras ao longo das pontas (radiais), torcidas pelo ruído; mudam a cada quadro.
+                float ph = frame * 0.37f;
+                float fl = 1f - MathF.Abs(2f * Fbm(ang * 2.5f + ph, r * 5f - ph * 2f) - 1f);
+                fl = MathF.Pow(fl, 3f);
+                // Borda: perto de onde o alpha some (contorno de cada ponta) acende.
+                int e1 = Math.Max(0, i - 2), e2 = Math.Min(n - 1, i + 2), f1 = Math.Max(0, j - 2), f2 = Math.Min(n - 1, j + 2);
+                float mn = MathF.Min(MathF.Min(a0[j * n + e1], a0[j * n + e2]), MathF.Min(a0[f1 * n + i], a0[f2 * n + i]));
+                float rim = Clamp01(1f - mn);
+                float tip = spike ? Clamp01((y + 0.95f) / 1.9f * 1.1f) : Clamp01((r - 0.10f) / 0.75f);
+                var c = Mix(Rgb(0x1E0438), Rgb(0x5A16A0), Clamp01(tip * 1.4f));
+                c = Mix(c, Rgb(0xC890FF), Clamp01(tip * tip * 1.2f));
+                float k = 0.55f + 0.75f * lum;                                 // facetas: um lado mais claro que o outro
+                c = (c.r * k, c.g * k, c.b * k);
+                c = Mix(c, Rgb(0xD8A8FF), Clamp01(fl * (0.25f + 0.55f * tip)));
+                c = Mix(c, Rgb(0xF0DCFF), Clamp01(rim * (0.35f + 0.6f * tip)));
+                px[o] = Clamp01(c.r); px[o + 1] = Clamp01(c.g); px[o + 2] = Clamp01(c.b);
+            }
+    }
+
+    /// <summary>Estrela de cristal: núcleo octaédrico e pontas facetadas em todas as direções, de tamanhos variados.</summary>
+    /// <summary>Pontas da estrela do Caos: direção (x, y, z), comprimento e largura de cada uma.</summary>
+    internal static float[] StarSpikes()
+    {
+        var rnd = new Random(9);
+        const int n = 16;
+        var r = new float[n * 5];
+        for (int i = 0; i < n; i++)
+        {
+            float yy = 1f - (i + 0.5f) / n * 2f, rr = MathF.Sqrt(1f - yy * yy), ph = i * 2.39996f;
+            var d = V3.Normalize(new V3(MathF.Cos(ph) * rr, yy, MathF.Sin(ph) * rr));
+            float flat = 1f - MathF.Abs(d.Z);
+            float len = (0.40f + 0.58f * flat) * (0.70f + 0.40f * (float)rnd.NextDouble());
+            float w = 0.17f + 0.07f * (float)rnd.NextDouble();
+            r[i * 5] = d.X; r[i * 5 + 1] = d.Y; r[i * 5 + 2] = d.Z; r[i * 5 + 3] = len; r[i * 5 + 4] = w;
+        }
+        return r;
+    }
+
+    /// <summary>Estrela de cristal: núcleo octaédrico e pontas facetadas em todas as direções, de tamanhos variados.</summary>
+    internal static Gem3D.Mesh StarMesh()
+    {
+        var parts = new List<(Gem3D.Mesh, V3, float)>();
+        parts.Add((Gem3D.Octahedron(), V3.Zero, 0.30f));
+        var sp = StarSpikes();
+        for (int i = 0; i < sp.Length / 5; i++)
+        {
+            var d = new V3(sp[i * 5], sp[i * 5 + 1], sp[i * 5 + 2]); float len = sp[i * 5 + 3], w = sp[i * 5 + 4];
+            var m = Gem3D.CrystalPoint(0.30f, -0.95f, 0.15f, 0.95f);
+            var up = V3.UnitY; var ax = V3.Cross(up, d); float dt = V3.Dot(up, d);
+            var q = ax.LengthSquared() < 1e-8f ? (dt > 0 ? System.Numerics.Quaternion.Identity : System.Numerics.Quaternion.CreateFromAxisAngle(V3.UnitX, MathF.PI))
+                                               : System.Numerics.Quaternion.CreateFromAxisAngle(V3.Normalize(ax), MathF.Acos(Math.Clamp(dt, -1f, 1f)));
+            var M = System.Numerics.Matrix4x4.CreateScale(w, len * 0.5f, w) * System.Numerics.Matrix4x4.CreateFromQuaternion(q) * System.Numerics.Matrix4x4.CreateTranslation(d * len * 0.5f);
+            var r = new Gem3D.Mesh();
+            foreach (var v in m.V) r.V.Add(V3.Transform(v, M));
+            foreach (var f in m.F) r.F.Add(f);
+            parts.Add((r, V3.Zero, 1f));
+        }
+        return Gem3D.Merge(parts.ToArray());
+    }
+
+    /// <summary>Faísca de plasma (vertical): risco em zigue-zague com halo roxo.</summary>
+    static float[] ArcBolt(int seed)
+    {
+        var rnd = new Random(seed * 17 + 3);
+        var pts = new List<(float x, float y)>();
+        for (int k = 0; k <= 10; k++) pts.Add((k == 0 || k == 10 ? 0f : ((float)rnd.NextDouble() - 0.5f) * 0.45f, -0.95f + 1.9f * k / 10f));
+        return Paint(64, (x, y) =>
+        {
+            float d = 9f;
+            for (int k = 0; k < 10; k++) d = MathF.Min(d, SegDist(x, y, pts[k].x, pts[k].y, pts[k + 1].x, pts[k + 1].y, out _));
+            float c = MathF.Exp(-Sq(d / 0.035f)), h = MathF.Exp(-Sq(d / 0.16f)) * 0.55f;
+            var col = Mix(Rgb(0xA040FF), Rgb(0xFFF0FF), c);
+            return (col.r, col.g, col.b, Clamp01(c + h));
+        });
+    }
+
+    /// <summary>Buraco negro: disco escuro com anel de fótons fino e aceso em volta.</summary>
+    static float[] BlackHoleTex() => Paint(S, (x, y) =>
+    {
+        float r = Len(x, y);
+        float ring = MathF.Exp(-Sq((r - 0.56f) / 0.025f)) + MathF.Exp(-Sq((r - 0.60f) / 0.07f)) * 0.45f;
+        float dark = Clamp01((0.555f - r) / 0.02f);
+        float a = Clamp01(dark + ring);
+        if (a <= 0.003f) return default;
+        var col = Mix(Rgb(0x020004), Rgb(0xE8B0FF), Clamp01(ring * (1f - dark)));
+        return (col.r, col.g, col.b, a);
+    });
+
+    /// <summary>Disco de acreção visto inclinado (achatado), girando: listras de plasma rosa-roxo, mais quente por dentro.</summary>
+    static float[] AccretionDisk(float phase) => Paint(BatTex, (x, y) =>
+    {
+        float yy = y / 0.38f;                    // inclinado: achatado na vertical
+        float r = Len(x, yy);
+        if (r < 0.56f || r > 0.98f) return default;
+        float ang = MathF.Atan2(yy, x);
+        float sw = Fbm(ang * 2.2f / MathF.PI + phase * 2f + r * 3f, r * 8f - phase * 6f);
+        float band = 0.5f + 0.5f * MathF.Sin(ang * 3f + r * 18f - phase * MathF.Tau * 3f);
+        float hot = Clamp01(1f - (r - 0.56f) / 0.42f);
+        float doppler = 0.65f + 0.35f * MathF.Cos(ang);                     // um lado mais claro (vindo em nossa direção)
+        float a = Clamp01((0.35f + 0.9f * sw) * (0.55f + 0.5f * band) * (0.5f + 1.1f * hot) * doppler) * Clamp01((r - 0.56f) / 0.03f) * Clamp01((0.98f - r) / 0.10f);
+        var col = Mix(Rgb(0x5A10A8), Rgb(0xFF90E8), Clamp01(hot * 0.8f + sw * 0.3f));
+        col = Mix(col, Rgb(0xFFF0FF), Clamp01(hot * hot * band - 0.4f));
+        return (col.r, col.g, col.b, a);
+    });
+
+
+
+    /// <summary>Orbe de vidro (só a casca): borda refratando mais grossa, reflexo de janela, brilho e cáustica embaixo.</summary>
+    static float Sm(float a, float b, float v) { float q = Clamp01((v - a) / (b - a)); return q * q * (3f - 2f * q); }
+
+    static float[] GlassOrb(float R, int cDark = 0x6A3A9A, int cLight = 0xE8D8FF, int cCaus = 0xF0C8FF) => Paint(S, (x, y) =>
+    {
+        float r = Len(x, y) / R;
+        if (r > 1.02f) return default;
+        float z = MathF.Sqrt(MathF.Max(0f, 1f - r * r));
+        float fres = MathF.Pow(1f - z, 2.2f);
+        var light = System.Numerics.Vector3.Normalize(new System.Numerics.Vector3(-0.45f, 0.65f, 0.62f));
+        var n = new System.Numerics.Vector3(x / R, y / R, z);
+        var refl = System.Numerics.Vector3.Reflect(-System.Numerics.Vector3.UnitZ, n);
+        // Janela: retângulo claro refletido em cima à esquerda.
+        float win = Sm(0.35f, 0.45f, refl.Y) * (1f - Sm(0.70f, 0.78f, refl.Y)) * Sm(-0.75f, -0.62f, refl.X) * (1f - Sm(-0.30f, -0.18f, refl.X));
+        float bar = Clamp01(1f - MathF.Abs(refl.X + 0.46f) / 0.03f) * win;      // travessa da janela
+        win *= 1f - bar;
+        float spec = MathF.Pow(Math.Max(0f, System.Numerics.Vector3.Dot(n, System.Numerics.Vector3.Normalize(light + System.Numerics.Vector3.UnitZ))), 160f);
+        float spec2 = MathF.Pow(Math.Max(0f, System.Numerics.Vector3.Dot(n, System.Numerics.Vector3.Normalize(new System.Numerics.Vector3(0.55f, -0.4f, 0.75f)))), 40f) * 0.35f;
+        // Cáustica: luz concentrada no lado oposto à luz, por dentro da borda.
+        float caus = MathF.Exp(-Sq((r - 0.80f) / 0.08f)) * Clamp01(0.5f + (x * 0.45f - y * 0.65f) / R) * 0.5f;
+        float rimLine = MathF.Exp(-Sq((r - 0.985f) / 0.02f));
+        float a = Clamp01(fres * 0.75f + win * 0.75f + spec + spec2 + caus * 0.6f + rimLine * 0.6f);
+        var c = Mix(Rgb(cDark), Rgb(cLight), Clamp01(win + spec + rimLine * 0.5f));
+        c = Mix(c, Rgb(cCaus), Clamp01(caus));
+        return (c.r, c.g, c.b, a * Clamp01((1.02f - r) * S * 0.3f));
+    });
+
+    /// <summary>Pontas para onde a energia tenta escapar (coordenadas do morcego aberto): asas em cima, meio e embaixo.</summary>
+    [ThreadStatic] static float[] EnTargets;   // pontos sorteados dentro do gelo (coordenadas do morcego aberto)
+
+    static float SegDist(float px, float py, float ax, float ay, float bx, float by, out float tt)
+    {
+        float vx = bx - ax, vy = by - ay, l2 = vx * vx + vy * vy;
+        tt = l2 > 0f ? Math.Clamp(((px - ax) * vx + (py - ay) * vy) / l2, 0f, 1f) : 0f;
+        return Len(px - ax - vx * tt, py - ay - vy * tt);
+    }
+
+    /// <summary>
+    /// Energia leitosa (opaca) dentro do gelo. ev = -1: só o núcleo rondando no peito; senão uma língua de energia
+    /// saindo do peito em direção à ponta ev, até "reach" (0..1) do caminho, com a cabeça inchada.
+    /// </summary>
+    static float[] EnergyTex(float[] lm, int ev, float reach) => Paint(S, (x, y) =>
+    {
+        int i = Math.Clamp((int)((x + 1f) * 0.5f * S), 0, S - 1), j = Math.Clamp((int)((y + 1f) * 0.5f * S), 0, S - 1);
+        int o = (j * S + i) * 3;
+        float cov = lm[o + 2];
+        if (cov <= 0f) return default;
+        float lx = lm[o], ly = lm[o + 1];
+        float cx0 = 0f, cy0 = 0.02f;
+        float f;
+        if (ev < 0) f = MathF.Exp(-(Sq(lx - cx0) + Sq(ly - cy0) * 0.6f) / 0.04f) * 0.85f;
+        else
+        {
+            float tx = EnTargets[ev * 2], ty = EnTargets[ev * 2 + 1];
+            float hx = cx0 + (tx - cx0) * reach, hy = cy0 + (ty - cy0) * reach;
+            float d = SegDist(lx, ly, cx0, cy0, hx, hy, out float tt);
+            float wdt = 0.07f + 0.08f * tt;                                   // engrossa na frente
+            float body = MathF.Exp(-Sq(d / wdt));
+            float head = MathF.Exp(-(Sq(lx - hx) + Sq(ly - hy)) / Sq(0.13f + 0.05f * reach));
+            f = MathF.Max(body * 0.8f, head);
+        }
+        if (f < 0.01f) return default;
+        float n = Fbm(lx * 6f + ev * 3.1f, ly * 6f - ev * 1.7f);
+        f *= 0.75f + 0.5f * n;
+        var c = Mix(Rgb(0x0C48C8), Rgb(0x30B8FF), Clamp01(f));
+        c = Mix(c, Rgb(0xE8FAFF), Clamp01(f * f * 1.4f - 0.55f));
+        return (c.r, c.g, c.b, Clamp01(f * 1.3f) * cov);
+    });
+
+    /// <summary>
+    /// Trinca na superfície do gelo onde a energia bateu: estrela de impacto (riscos que saem do ponto em zigue-zague,
+    /// com arcos ligando), com a aresta branca da fratura, o lado escuro do degrau e a luz azul vazando pela trinca.
+    /// </summary>
+    static float[] EnergyCrack(float[] lm, int ev)
+    {
+        var rnd = new Random(ev * 31 + 7);
+        float tx = EnTargets[ev * 2], ty = EnTargets[ev * 2 + 1];
+        var segs = new List<(float ax, float ay, float bx, float by, float w)>();
+        int rays = 6 + rnd.Next(3);
+        float a0 = (float)rnd.NextDouble() * MathF.Tau;
+        var ringPts = new List<(float x, float y, float ang)>();
+        for (int r = 0; r < rays; r++)
+        {
+            float ang = a0 + r * MathF.Tau / rays + ((float)rnd.NextDouble() - 0.5f) * 0.5f;
+            float len = 0.14f + 0.12f * (float)rnd.NextDouble();
+            float px = tx, py = ty; int steps = 4;
+            for (int k = 0; k < steps; k++)
+            {
+                float aa = ang + ((float)rnd.NextDouble() - 0.5f) * 0.6f, st = len / steps;
+                float nx = px + MathF.Cos(aa) * st, ny = py + MathF.Sin(aa) * st;
+                segs.Add((px, py, nx, ny, 1f - k / (float)steps * 0.6f));
+                if (k == 1) ringPts.Add((nx, ny, ang));
+                px = nx; py = ny;
+            }
+        }
+        // Arcos entre raios vizinhos (o "anel" da estrela de impacto), nem todos.
+        for (int r = 0; r < ringPts.Count; r++)
+        {
+            if (rnd.NextDouble() < 0.35) continue;
+            var p1 = ringPts[r]; var p2 = ringPts[(r + 1) % ringPts.Count];
+            float mx = (p1.x + p2.x) * 0.5f + ((float)rnd.NextDouble() - 0.5f) * 0.02f, my = (p1.y + p2.y) * 0.5f + ((float)rnd.NextDouble() - 0.5f) * 0.02f;
+            segs.Add((p1.x, p1.y, mx, my, 0.55f)); segs.Add((mx, my, p2.x, p2.y, 0.55f));
+        }
+        var L2 = new System.Numerics.Vector2(-0.57f, 0.82f);
+        // Grade em coordenadas locais com os riscos de cada célula (só testa os riscos perto do pixel).
+        const int GC = 32; const float pad = 0.05f;
+        var cells = new List<int>[GC * GC];
+        for (int si = 0; si < segs.Count; si++)
+        {
+            var (ax, ay, bx2, by2, _) = segs[si];
+            int cx0 = Math.Max(0, (int)((MathF.Min(ax, bx2) - pad + 1f) * 0.5f * GC)), cx1 = Math.Min(GC - 1, (int)((MathF.Max(ax, bx2) + pad + 1f) * 0.5f * GC));
+            int cy0 = Math.Max(0, (int)((MathF.Min(ay, by2) - pad + 1f) * 0.5f * GC)), cy1 = Math.Min(GC - 1, (int)((MathF.Max(ay, by2) + pad + 1f) * 0.5f * GC));
+            for (int cy = cy0; cy <= cy1; cy++) for (int cx = cx0; cx <= cx1; cx++) (cells[cy * GC + cx] ??= new List<int>()).Add(si);
+        }
+        int n = BatTex;
+        var outp = new float[n * n * 4];
+        for (int j = 0; j < n; j++)
+            for (int i = 0; i < n; i++)
+            {
+                int o = (j * n + i) * 3;
+                float cov = lm[o + 2];
+                if (cov <= 0f) continue;
+                float lx = lm[o], ly = lm[o + 1];
+                int cc = Math.Clamp((int)((ly + 1f) * 0.5f * GC), 0, GC - 1) * GC + Math.Clamp((int)((lx + 1f) * 0.5f * GC), 0, GC - 1);
+                float impact = MathF.Exp(-(Sq(lx - tx) + Sq(ly - ty)) / 0.0015f);
+                float chip = MathF.Exp(-(Sq(lx - tx) + Sq(ly - ty)) / 0.004f);
+                float line = 0f, shade = 0f, glow = 0f;
+                var lst = cells[cc];
+                if (lst != null)
+                    foreach (int si in lst)
+                    {
+                        var (ax, ay, bx2, by2, w) = segs[si];
+                        float d = SegDist(lx, ly, ax, ay, bx2, by2, out _);
+                        float wd = 0.006f + 0.006f * w;
+                        line = MathF.Max(line, MathF.Exp(-Sq(d / wd)) * (0.55f + 0.45f * w));
+                        float sd2 = SegDist(lx + L2.X * 0.010f, ly + L2.Y * 0.010f, ax, ay, bx2, by2, out _);
+                        shade = MathF.Max(shade, MathF.Exp(-Sq(sd2 / (wd * 1.3f))) * w);
+                        glow = MathF.Max(glow, MathF.Exp(-Sq(d / 0.035f)) * w);
+                    }
+                float a = Clamp01(line + shade * 0.6f + glow * 0.45f + chip * 0.7f);
+                if (a < 0.01f) continue;
+                var c = Mix(Rgb(0x1E6CE8), Rgb(0x0A1E46), Clamp01(shade - line));
+                c = Mix(c, Rgb(0xF4FAFF), Clamp01(line * 1.2f + chip * 0.8f + impact));
+                int q = (j * n + i) * 4;
+                outp[q] = c.r; outp[q + 1] = c.g; outp[q + 2] = c.b; outp[q + 3] = a * cov;
+            }
+        return outp;
+    }
+
+
+    /// <summary>Ruído suave no tempo (0..1), para coisas que oscilam sem ritmo certo.</summary>
+    internal static float SmoothNoise(float x, int seed)
+    {
+        int i = (int)MathF.Floor(x); float f = x - i; f = f * f * (3f - 2f * f);
+        return GemStyle.Hash(i * 7 + seed * 131) * (1f - f) + GemStyle.Hash((i + 1) * 7 + seed * 131) * f;
+    }
+
+    /// <summary>Pontos espalhados dentro de uma peça (pelo alpha): x, y em coordenadas de textura e quão perto da borda.</summary>
+    static float[] InteriorPoints(float[] px, int n)
+    {
+        var l = new List<float>();
+        const int G = 18;
+        for (int j = 1; j < G; j++) for (int i = 1; i < G; i++)
+        {
+            int sx = i * n / G, sy = j * n / G;
+            if (px[(sy * n + sx) * 4 + 3] < 0.5f) continue;
+            // Distância até sair da peça (amostrando em 8 direções).
+            float minD = 1f;
+            for (int a = 0; a < 8; a++)
+            {
+                float ca = MathF.Cos(a * MathF.PI / 4f), sa = MathF.Sin(a * MathF.PI / 4f);
+                for (int st = 1; st <= 12; st++)
+                {
+                    int xx = sx + (int)(ca * st * 3), yy = sy + (int)(sa * st * 3);
+                    if (xx < 0 || yy < 0 || xx >= n || yy >= n || px[(yy * n + xx) * 4 + 3] < 0.3f) { minD = MathF.Min(minD, st / 12f); break; }
+                }
+            }
+            l.Add((sx + 0.5f) / n * 2f - 1f); l.Add((sy + 0.5f) / n * 2f - 1f); l.Add(Clamp01(1f - minD * 2.5f));
+        }
+        return l.ToArray();
+    }
+
+    /// <summary>Bolinha de magia: miolo branco-azulado, halo azul e um véu lilás, com fiapos de luz.</summary>
+    static float[] WispTex() => Paint(64, (x, y) =>
+    {
+        float r = Len(x, y), a = MathF.Atan2(y, x);
+        float core = MathF.Exp(-r * r / 0.025f), halo = MathF.Exp(-r * r / 0.22f) * 0.75f;
+        float fil = MathF.Pow(Clamp01(1f - MathF.Abs(MathF.Sin(a * 3f + r * 6f)) * 4f), 2f) * Clamp01(1f - r) * 0.5f;
+        var c = Mix(Mix(Rgb(0x5A5CFF), Rgb(0x30C8FF), Clamp01(1f - r * 1.3f)), Rgb(0xE8FCFF), core);
+        return (c.r, c.g, c.b, Clamp01(core + halo + fil));
+    });
+
+    /// <summary>
+    /// Luz mágica presa dentro de uma peça de gelo: veios finos de luz azul-clara (com um toque lilás) que seguem
+    /// o formato da peça, mais fortes no miolo e apagando perto das bordas.
+    /// </summary>
+    static float[] IceMagic(float[] src, int sn, int seed) => Paint(S, (x, y) =>
+    {
+        int sx = Math.Clamp((int)((x + 1f) * 0.5f * sn), 0, sn - 1), sy = Math.Clamp((int)((y + 1f) * 0.5f * sn), 0, sn - 1);
+        // Miolo: média do alpha em volta (longe da borda = mais luz).
+        float acc = 0f; int c = 0;
+        for (int dj = -6; dj <= 6; dj += 3) for (int di = -6; di <= 6; di += 3)
+        { int ii = Math.Clamp(sx + di, 0, sn - 1), jj = Math.Clamp(sy + dj, 0, sn - 1); acc += src[(jj * sn + ii) * 4 + 3]; c++; }
+        float a0 = src[(sy * sn + sx) * 4 + 3];
+        float core = Clamp01((acc / c - 0.30f) / 0.55f) * a0;
+        if (core <= 0.001f) return default;
+        float wx = Fbm(x * 2.2f + seed, y * 2.2f - seed) - 0.5f, wy = Fbm(x * 2.2f - seed * 0.7f, y * 2.2f + 3f) - 0.5f;
+        float r = 1f - MathF.Abs(2f * Fbm(x * 4.5f + wx * 2.5f + seed * 1.3f, y * 4.5f + wy * 2.5f) - 1f);
+        float vein = MathF.Pow(r, 6f);
+        float haze = 0.25f + 0.25f * Fbm(x * 3f - seed, y * 3f + seed);
+        var col = Mix(Rgb(0x6CC8FF), Rgb(0xEAF8FF), vein);
+        col = Mix(col, Rgb(0xB49CFF), Clamp01(Fbm(x * 1.5f + 9f + seed, y * 1.5f) - 0.55f) * 0.8f);
+        return (col.r, col.g, col.b, Clamp01(core * (haze + vein * 1.1f)));
+    });
+    internal const float BallR = 0.94f;
+
+    /// <summary>Encaixe pintado na esfera: o contorno plano (em arco) é dobrado sobre a bola, como um entalhe curvo.</summary>
+    internal static Func<float, float, float> OnSphere(Func<float, float, float> sd) => (u, v) =>
+    {
+        float q = u * u + v * v;
+        if (q >= BallR * BallR * 0.995f) return 1f;
+        float z = MathF.Sqrt(BallR * BallR - q);
+        float ax = MathF.Atan2(u, z), ay = MathF.Asin(Math.Clamp(v / BallR, -1f, 1f));
+        return MathF.Max(sd(ax * BallR, ay * BallR), MathF.Sqrt(q) - BallR * 0.985f);
+    };
+
+    /// <summary>
+    /// Morcego de cristal (malha). open = 0: asas fechadas envolvendo o corpo como uma capa; 1: abertas.
+    /// Corpo e cabeça facetados, orelhas e presas de cristal, membranas com dobras e os ossos dos dedos em varetas.
+    /// </summary>
+    internal static Gem3D.Mesh CrystalBat(float open, float bend = 0f)
+    {
+        static Gem3D.Mesh Xf(Gem3D.Mesh m, System.Numerics.Matrix4x4 M) { var r = new Gem3D.Mesh(); foreach (var v in m.V) r.V.Add(System.Numerics.Vector3.Transform(v, M)); foreach (var f in m.F) r.F.Add(f); return r; }
+        static System.Numerics.Quaternion FromTo(V3 a, V3 b)
+        {
+            a = V3.Normalize(a); b = V3.Normalize(b); var ax = V3.Cross(a, b); float d = V3.Dot(a, b);
+            if (ax.LengthSquared() < 1e-8f) return d > 0 ? System.Numerics.Quaternion.Identity : System.Numerics.Quaternion.CreateFromAxisAngle(V3.UnitX, MathF.PI);
+            return System.Numerics.Quaternion.CreateFromAxisAngle(V3.Normalize(ax), MathF.Acos(Math.Clamp(d, -1f, 1f)));
+        }
+        static Gem3D.Mesh Rod(V3 a, V3 b, float w) => Xf(Gem3D.CrystalPoint(0.30f, -0.95f, 0.6f, 0.95f),
+            System.Numerics.Matrix4x4.CreateScale(w, (b - a).Length() * 0.5f, w) * System.Numerics.Matrix4x4.CreateFromQuaternion(FromTo(V3.UnitY, b - a)) * System.Numerics.Matrix4x4.CreateTranslation((a + b) * 0.5f + new V3(0, 0, 0.01f)));
+        var parts = new List<(Gem3D.Mesh, V3, float)>();
+        parts.Add((Gem3D.Ellipsoid(new V3(0.12f, 0.19f, 0.10f), 6, 4), new V3(0, -0.05f, 0), 1f));
+        parts.Add((Xf(Gem3D.CrystalPoint(0.30f, -0.85f, 0.0f, 0.9f), System.Numerics.Matrix4x4.CreateScale(0.12f, -0.16f, 0.10f) * System.Numerics.Matrix4x4.CreateTranslation(0, -0.22f, 0)), V3.Zero, 1f));
+        parts.Add((Gem3D.Ellipsoid(new V3(0.095f, 0.085f, 0.085f), 6, 4), new V3(0, 0.19f, 0.02f), 1f));
+        for (int s = -1; s <= 1; s += 2)
+        {
+            parts.Add((Xf(Gem3D.CrystalPoint(0.30f, -0.6f, -0.1f, 0.95f), System.Numerics.Matrix4x4.CreateScale(0.10f, 0.12f, 0.06f) * System.Numerics.Matrix4x4.CreateRotationZ(-s * 0.35f) * System.Numerics.Matrix4x4.CreateTranslation(s * 0.055f, 0.29f, 0f)), V3.Zero, 1f));
+            parts.Add((Xf(Gem3D.CrystalPoint(0.30f, -0.2f, 0.2f, 0.9f), System.Numerics.Matrix4x4.CreateScale(0.02f, -0.05f, 0.02f) * System.Numerics.Matrix4x4.CreateTranslation(s * 0.025f, 0.135f, 0.09f)), V3.Zero, 1f));
+        }
+        float fold = 1f - open;
+        for (int s = -1; s <= 1; s += 2)
+        {
+            var sh = new V3(s * 0.10f, 0.10f, 0f);
+            var pts = new List<V3> { new(s * 0.10f, 0.12f, 0), new(s * 0.42f, 0.34f, 0.02f), new(s * 0.86f, 0.36f, 0.05f), new(s * 0.66f, 0.12f, -0.03f), new(s * 0.92f, 0.00f, 0.05f), new(s * 0.62f, -0.12f, -0.03f), new(s * 0.74f, -0.30f, 0.05f), new(s * 0.46f, -0.26f, -0.03f), new(s * 0.40f, -0.46f, 0.04f), new(s * 0.22f, -0.32f, -0.02f), new(s * 0.10f, -0.24f, 0f) };
+            // Dobrada: a asa encolhe, cai um pouco e envolve o corpo pela frente como uma capa.
+            var M = System.Numerics.Matrix4x4.CreateTranslation(-sh) * System.Numerics.Matrix4x4.CreateScale(1f - 0.35f * fold, 1f - 0.1f * fold, 1f)
+                  * System.Numerics.Matrix4x4.CreateRotationZ(-s * fold * 0.55f) * System.Numerics.Matrix4x4.CreateRotationY(s * fold * 2.35f)
+                  * System.Numerics.Matrix4x4.CreateTranslation(sh + new V3(0, 0, 0.03f * fold));
+            var m = new Gem3D.Mesh(); foreach (var p in pts) m.V.Add(V3.Transform(p, M));
+            for (int i = 2; i < pts.Count - 1; i++) m.F.Add((1, i, i + 1, 0));
+            m.F.Add((0, 1, pts.Count - 1, 0));
+            parts.Add((m, V3.Zero, 1f));
+            foreach (int ti in new[] { 2, 4, 6, 8 }) parts.Add((Rod(V3.Transform(pts[1], M), V3.Transform(pts[ti], M), 0.035f), V3.Zero, 1f));
+            parts.Add((Rod(V3.Transform(pts[0], M), V3.Transform(pts[1], M), 0.045f), V3.Zero, 1f));
+        }
+        var mesh = Xf(Gem3D.Merge(parts.ToArray()), System.Numerics.Matrix4x4.CreateScale(1.22f - 0.18f * open) * System.Numerics.Matrix4x4.CreateTranslation(0, 0.05f, 0));
+        if (bend > 0f)
+        {
+            // Deitado na pedra: cada ponto é dobrado sobre a esfera (x, y viram arco na superfície), então as asas
+            // abraçam a curva da bola e somem para trás nas bordas, como se estivesse grudado nela.
+            for (int i = 0; i < mesh.V.Count; i++)
+            {
+                var v = mesh.V[i];
+                float ax = v.X / BallR, ay = v.Y / BallR;
+                var n = new V3(MathF.Sin(ax) * MathF.Cos(ay), MathF.Sin(ay), MathF.Cos(ax) * MathF.Cos(ay));
+                var onSphere = n * (BallR + 0.03f + v.Z) - new V3(0, 0, BallR);
+                mesh.V[i] = V3.Lerp(v, onSphere, bend);
+            }
+        }
+        return mesh;
+    }
+
+    /// <summary>
+    /// Distância com sinal a partir do contorno de uma textura (alpha &gt; 0.4 = dentro), já engordada em "grow",
+    /// para fazer o encaixe no formato exato de uma peça 3D renderizada.
+    /// </summary>
+    internal static Func<float, float, float> SdfFromAlpha(float[] px, int n, float grow, bool round = true)
+    {
+        const int G = 256;
+        var inside = new bool[G * G];
+        for (int j = 0; j < G; j++) for (int i = 0; i < G; i++)
+        {
+            int sx = Math.Min(n - 1, (int)((i + 0.5f) / G * n)), sy = Math.Min(n - 1, (int)((j + 0.5f) / G * n));
+            inside[j * G + i] = px[(sy * n + sx) * 4 + 3] > 0.4f;
+        }
+        var edge = new List<(float x, float y)>();
+        for (int j = 0; j < G; j++) for (int i = 0; i < G; i++)
+        {
+            if (!inside[j * G + i]) continue;
+            bool b = i == 0 || j == 0 || i == G - 1 || j == G - 1 || !inside[j * G + i - 1] || !inside[j * G + i + 1] || !inside[(j - 1) * G + i] || !inside[(j + 1) * G + i];
+            if (b) edge.Add(((i + 0.5f) / G * 2f - 1f, (j + 0.5f) / G * 2f - 1f));
+        }
+        var d = new float[G * G];
+        for (int j = 0; j < G; j++) for (int i = 0; i < G; i++)
+        {
+            float x = (i + 0.5f) / G * 2f - 1f, y = (j + 0.5f) / G * 2f - 1f, best = 9f;
+            foreach (var (ex, ey) in edge) { float q = (x - ex) * (x - ex) + (y - ey) * (y - ey); if (q < best) best = q; }
+            d[j * G + i] = (inside[j * G + i] ? -1f : 1f) * MathF.Sqrt(best) - grow;
+        }
+        // Suaviza um pouco (o contorno do morcego tem pontas finas demais para uma parede de encaixe).
+        var sm = new float[G * G];
+        for (int j = 0; j < G; j++) for (int i = 0; i < G; i++)
+        {
+            float acc = 0f; int c = 0;
+            int rr = round ? 2 : 1;
+            for (int dj = -rr; dj <= rr; dj++) for (int di = -rr; di <= rr; di++)
+            { int ii = Math.Clamp(i + di, 0, G - 1), jj = Math.Clamp(j + dj, 0, G - 1); acc += d[jj * G + ii]; c++; }
+            sm[j * G + i] = acc / c;
+        }
+        // Arredonda o contorno (duas passadas a mais): parede de encaixe não acompanha recortes finos.
+        for (int pass = 0; pass < (round ? 2 : 0); pass++)
+        {
+            var tmp = (float[])sm.Clone();
+            for (int j = 0; j < G; j++) for (int i = 0; i < G; i++)
+            {
+                float acc = 0f; int c = 0;
+                for (int dj = -2; dj <= 2; dj++) for (int di = -2; di <= 2; di++)
+                { int ii = Math.Clamp(i + di, 0, G - 1), jj = Math.Clamp(j + dj, 0, G - 1); acc += tmp[jj * G + ii]; c++; }
+                sm[j * G + i] = acc / c;
+            }
+        }
+        return (x, y) =>
+        {
+            if (x < -1f || x > 1f || y < -1f || y > 1f) return 1f;
+            float fx = Math.Clamp((x + 1f) * 0.5f * G - 0.5f, 0f, G - 1.001f), fy = Math.Clamp((y + 1f) * 0.5f * G - 0.5f, 0f, G - 1.001f);
+            int i0 = (int)fx, j0 = (int)fy; float tx = fx - i0, ty = fy - j0;
+            float a = sm[j0 * G + i0] + (sm[j0 * G + i0 + 1] - sm[j0 * G + i0]) * tx;
+            float b = sm[(j0 + 1) * G + i0] + (sm[(j0 + 1) * G + i0 + 1] - sm[(j0 + 1) * G + i0]) * tx;
+            return a + (b - a) * ty;
+        };
+    }
+
+    /// <summary>3D: só o vulto do vampiro (o bloco de gelo transparente é desenhado por cima).</summary>
+    static float[] VampInnerTex() => Paint(S, (x, y) =>
+    {
+        float vs = VampSilhouette(x, y + 0.05f);
+        float shadow = Clamp01(0.5f - vs / 0.03f);
+        if (shadow <= 0f) return default;
+        var c = Mix(Rgb(0x0A1226), Rgb(0x1A2A48), Clamp01(y * 0.5f + 0.5f));
+        float arm = Clamp01(0.5f - VampArms(x, y + 0.05f) / 0.02f) * shadow;
+        c = Mix(c, Rgb(0x34507E), arm * 0.8f);
+        return (c.r, c.g, c.b, shadow * 0.95f);
+    });
+
+    /// <summary>Gelo transparente: partes escuras deixam ver o que está dentro, brilhos e arestas ficam sólidos.</summary>
+    static void IceClear(float[] px, float base0 = 0.28f)
+    {
+        for (int i = 0; i < px.Length; i += 4)
+        {
+            if (px[i + 3] <= 0f) continue;
+            float l = MathF.Max(px[i], MathF.Max(px[i + 1], px[i + 2]));
+            px[i + 3] *= Clamp01(base0 + 1.8f * Sq(Clamp01((l - 0.55f) / 0.45f)));
+        }
+    }
+
     /// <summary>Olhos do vampiro se abrindo: dois riscos acesos em azul-gelo.</summary>
     static float[] VampEyesTex() => Paint(S, (x, y) =>
     {
@@ -3129,6 +6299,46 @@ internal static class GemArt
 
     /// <summary>Caixão de vampiro (estreito em cima e embaixo, ombros largos).</summary>
     static float Coffin(float x, float y) => PolyN(x, y, new[] { -0.24f, 0.86f, 0.24f, 0.86f, 0.46f, 0.44f, 0.28f, -0.86f, -0.28f, -0.86f, -0.46f, 0.44f });
+
+    /// <summary>
+    /// Runas sagradas e vampíricas ao mesmo tempo: cada uma junta um símbolo de luz (cruz, auréola, sol, asas)
+    /// com um vampírico (presas, gota de sangue, lua, morcego). Nove desenhos diferentes.
+    /// </summary>
+    static List<(float, float, float, float)> HolyVampRune(int i)
+    {
+        var l = new List<(float, float, float, float)>();
+        void S(float a, float b, float c, float d) => l.Add((a, b, c, d));
+        void Fangs(float y) { S(-0.28f, y, -0.18f, y - 0.30f); S(-0.18f, y - 0.30f, -0.08f, y); S(0.08f, y, 0.18f, y - 0.30f); S(0.18f, y - 0.30f, 0.28f, y); }
+        void Drop(float cx, float cy, float r) { Arc(l, cx, cy, r, 200f, 340f + 360f - 360f, 8); Arc(l, cx, cy, r, -160f, 20f, 8); S(cx - r * 0.94f, cy - r * 0.34f, cx, cy + r * 1.6f); S(cx + r * 0.94f, cy - r * 0.34f, cx, cy + r * 1.6f); }
+        void Wings(float y) { S(-0.15f, y, -0.55f, y + 0.25f); S(-0.55f, y + 0.25f, -0.45f, y + 0.05f); S(-0.45f, y + 0.05f, -0.70f, y + 0.12f); S(-0.70f, y + 0.12f, -0.50f, y - 0.15f);
+                              S(0.15f, y, 0.55f, y + 0.25f); S(0.55f, y + 0.25f, 0.45f, y + 0.05f); S(0.45f, y + 0.05f, 0.70f, y + 0.12f); S(0.70f, y + 0.12f, 0.50f, y - 0.15f); }
+        switch (i % 9)
+        {
+            case 0:   // cruz com auréola e presas
+                S(0f, -0.55f, 0f, 0.55f); S(-0.35f, 0.20f, 0.35f, 0.20f); Arc(l, 0f, 0.72f, 0.16f, 0f, 360f, 12); Fangs(-0.55f); break;
+            case 1:   // ankh com asas de morcego
+                Arc(l, 0f, 0.50f, 0.20f, 0f, 360f, 12); S(0f, 0.30f, 0f, -0.80f); S(-0.32f, 0.18f, 0.32f, 0.18f); Wings(-0.25f); break;
+            case 2:   // lua crescente atravessada por uma lâmina, cruz no topo
+                Arc(l, 0f, 0f, 0.50f, 60f, 300f, 14); Arc(l, 0.18f, 0f, 0.40f, 80f, 280f, 12); S(0f, -0.75f, 0f, 0.55f); S(-0.14f, 0.70f, 0.14f, 0.70f); S(0f, 0.55f, 0f, 0.85f); break;
+            case 3:   // gota de sangue com a cruz dentro
+                Drop(0f, -0.25f, 0.42f); S(0f, -0.45f, 0f, 0.20f); S(-0.18f, -0.08f, 0.18f, -0.08f); break;
+            case 4:   // sol com raios e presas penduradas
+                Arc(l, 0f, 0.25f, 0.26f, 0f, 360f, 14);
+                for (int k = 0; k < 8; k++) { float a = k * MathF.PI / 4f; S(MathF.Cos(a) * 0.34f, 0.25f + MathF.Sin(a) * 0.34f, MathF.Cos(a) * 0.52f, 0.25f + MathF.Sin(a) * 0.52f); }
+                Fangs(-0.25f); break;
+            case 5:   // haste alada com losango no topo
+                S(0f, -0.80f, 0f, 0.40f); S(0f, 0.40f, -0.16f, 0.60f); S(-0.16f, 0.60f, 0f, 0.80f); S(0f, 0.80f, 0.16f, 0.60f); S(0.16f, 0.60f, 0f, 0.40f);
+                Arc(l, -0.40f, 0.05f, 0.38f, -20f, 100f, 8); Arc(l, 0.40f, 0.05f, 0.38f, 80f, 200f, 8); break;
+            case 6:   // cálice com gota caindo
+                S(-0.40f, 0.30f, 0.40f, 0.30f); Arc(l, 0f, 0.30f, 0.40f, 180f, 360f, 10); S(0f, -0.10f, 0f, -0.60f); S(-0.28f, -0.70f, 0.28f, -0.70f); Drop(0f, 0.62f, 0.10f); break;
+            case 7:   // olho de luz com pupila de vampiro e raios
+                Arc(l, 0f, -0.45f, 0.75f, 52f, 128f, 10); Arc(l, 0f, 0.45f, 0.75f, 232f, 308f, 10); S(0f, -0.22f, 0f, 0.22f);
+                S(0f, 0.40f, 0f, 0.65f); S(-0.30f, 0.32f, -0.45f, 0.55f); S(0.30f, 0.32f, 0.45f, 0.55f); break;
+            default:  // cruz dupla sobre asas de morcego
+                S(0f, -0.70f, 0f, 0.75f); S(-0.22f, 0.50f, 0.22f, 0.50f); S(-0.36f, 0.20f, 0.36f, 0.20f); Wings(-0.55f); break;
+        }
+        return l;
+    }
 
     static List<(float, float, float, float)> Arc(List<(float, float, float, float)> l, float cx, float cy, float r, float a0, float a1, int n = 10)
     {
@@ -4841,7 +8051,7 @@ internal static class GemArt
     });
 
     /// <summary>Pálpebras de escamas: c = 0 aberta .. 1 fechada.</summary>
-    static float[] LidTex(float c) => Paint(S, (x, y) =>
+    static float[] LidTex(float c, bool rel = false) => Paint(S, (x, y) =>
     {
         float d = Eye(x / 0.84f, y / 0.84f) * 0.84f;
         if (d > 0.01f || c <= 0f) return default;
@@ -4849,6 +8059,7 @@ internal static class GemArt
         float top = h * (1f - c * 1.10f), bot = -h * (1f - c * 0.90f);
         float lidD = MathF.Min(top - y, y - bot);                    // < 0 coberto
         float a = Cover(MathF.Max(d, lidD), S);
+        if (rel) return Lid3D(x, y, d, top, bot, lidD, a);
         if (a <= 0f) return default;
         bool upper = y > (top + bot) * 0.5f;
         // Escamas: linhas em arco, roxo escuro, borda da pálpebra acesa de verde.
@@ -4860,6 +8071,171 @@ internal static class GemArt
         float edge = Clamp01(1f - (-lidD) / 0.03f);
         col = Mix(col, Rgb(0x9CFF5A), edge * 0.9f);
         return (col.r, col.g, col.b, a);
+    });
+
+    /// <summary>
+    /// Globo ocular 3D visto pela abertura amendoada: esfera com íris projetada na direção do olhar,
+    /// córnea brilhante, pupila redonda (0) ou em fenda (1), sombra das pálpebras e das bordas.
+    /// </summary>
+    static float[] EyeBall3D(float ax, float ay, int slit, bool goo = false) => Paint(S, (x, y) =>
+    {
+        float d = Eye(x / 0.82f, y / 0.82f) * 0.82f;
+        float a = Cover(d, S);
+        if (a <= 0f) return default;
+        const float R = 0.80f;
+        float z = MathF.Sqrt(Math.Max(0.02f, R * R - x * x - y * y));
+        var n = new System.Numerics.Vector3(x, y, z) / R;
+        var L = System.Numerics.Vector3.Normalize(new System.Numerics.Vector3(MathF.Sin(ax), MathF.Sin(ay), MathF.Cos(ax) * MathF.Cos(ay)));
+        var U = System.Numerics.Vector3.Normalize(System.Numerics.Vector3.Cross(new System.Numerics.Vector3(0, 1, 0), L));
+        var V = System.Numerics.Vector3.Cross(L, U);
+        float ang = MathF.Acos(Math.Clamp(System.Numerics.Vector3.Dot(n, L), -1f, 1f));
+        const float IrisA = 0.46f;
+        float rr = ang / IrisA;
+        float pu = System.Numerics.Vector3.Dot(n, U), pv = System.Numerics.Vector3.Dot(n, V);
+        float pa = MathF.Atan2(pv, pu);
+        var light = System.Numerics.Vector3.Normalize(new System.Numerics.Vector3(-0.45f, 0.65f, 0.62f));
+        float diff = Math.Max(0f, System.Numerics.Vector3.Dot(n, light));
+        (float r, float g, float b) c;
+        if (rr < 1.08f)
+        {
+            // Íris: raios verdes tóxicos, brilho interno perto da pupila, aro escuro (limbo).
+            float rays = 0.5f + 0.5f * MathF.Sin(pa * 22f + rr * 9f + Fbm(pu * 6f + 3f, pv * 6f) * 6f);
+            float crypt = Fbm(pa * 3f + 7f, rr * 5f);
+            c = Mix(Rgb(0x1A5A0C), Rgb(0x9CF050), Clamp01(1f - rr) * 0.6f + rays * 0.35f + (crypt - 0.5f) * 0.3f);
+            c = Mix(c, Rgb(0xE8FFB0), Clamp01(1f - rr / 0.38f) * 0.55f);
+            c = Mix(c, Rgb(0x061E03), Clamp01((rr - 0.82f) / 0.20f));
+            // Íris côncava sob a córnea: mais escura do lado da luz, mais clara do lado oposto.
+            float conc = Clamp01(rr) * (System.Numerics.Vector3.Dot(new System.Numerics.Vector3(pu, pv, 0), -light) * 2.5f);
+            c = Mix(c, Rgb(0xC8FF80), Clamp01(conc) * 0.30f);
+            // Pupila.
+            float pw = slit == 0 ? 0.36f : 0.11f, ph = slit == 0 ? 0.40f : 0.86f;
+            float pd = Len(rr * MathF.Cos(pa) / pw, rr * MathF.Sin(pa) / ph);
+            if (pd < 1.15f)
+            {
+                c = Mix(c, Rgb(0x8CFF40), Clamp01(1f - MathF.Abs(pd - 1.05f) / 0.10f) * 0.6f);   // aro aceso
+                c = Mix(c, Rgb(0x020004), Clamp01((1.0f - pd) / 0.08f));
+            }
+            // Borda da íris se fundindo na esclera.
+            float bl = Clamp01((rr - 1.0f) / 0.08f);
+            float lit = 0.55f + 0.55f * diff;   // a íris brilha por dentro: pouca sombra
+            if (goo)
+            {
+                // Íris boiando na gosma: borda some no líquido preto (a gosma fica embaixo, em outra camada).
+                c = (c.r * lit, c.g * lit, c.b * lit);
+                float aoI = Clamp01(-d / 0.16f);
+                float kI = 0.45f + 0.55f * aoI;
+                return (c.r * kI, c.g * kI, c.b * kI, a * (1f - bl));
+            }
+            var sc0 = Mix(Rgb(0x14031E), Rgb(0x4A1866), 0.6f);
+            c = Mix(c, sc0, bl);
+            c = (c.r * lit, c.g * lit, c.b * lit);
+        }
+        else if (goo)
+        {
+            // Brilho verde da íris vazando na gosma em volta.
+            float gl = Clamp01(1f - (rr - 1.0f) / 0.35f);
+            return gl <= 0f ? default : (0.45f, 1.0f, 0.30f, a * gl * gl * 0.35f);
+        }
+        else
+        {
+            // Esclera roxa escura e úmida, com veias.
+            float vn = Fbm(x * 7f + 2f, y * 7f - 1f);
+            c = Mix(Rgb(0x1E0630), Rgb(0x5A1E7A), 0.55f);
+            c = Mix(c, Rgb(0xB0307A), Clamp01(1f - MathF.Abs(vn - 0.5f) / 0.03f) * 0.55f);
+            float lit = 0.25f + 1.0f * diff;
+            c = (c.r * lit, c.g * lit, c.b * lit);
+        }
+        // Oclusão: escurece onde o globo some sob as bordas, mais forte embaixo da pálpebra de cima.
+        float ao = Clamp01(-d / 0.16f);
+        float topSh = Clamp01((y + 0.05f) / 0.30f) * 0.35f;
+        float k = (0.30f + 0.70f * ao) * (1f - topSh * (1f - ao));
+        c = (c.r * k, c.g * k, c.b * k);
+        // Córnea molhada: reflexo forte da luz e um reflexo menor de "janela".
+        var hv = System.Numerics.Vector3.Normalize(light + new System.Numerics.Vector3(0, 0, 1));
+        float spec = MathF.Pow(Math.Max(0f, System.Numerics.Vector3.Dot(n, hv)), 90f) * 1.3f;
+        float spec2 = MathF.Pow(Math.Max(0f, System.Numerics.Vector3.Dot(n, System.Numerics.Vector3.Normalize(new System.Numerics.Vector3(0.35f, -0.25f, 1f)))), 220f) * 0.5f;
+        float sp = (spec + spec2) * (0.35f + 0.65f * ao);
+        c = Mix(c, Rgb(0xF4FFF0), Clamp01(sp));
+        // Brilho de borda (rim) esverdeado.
+        float rim = MathF.Pow(1f - n.Z, 3f) * 0.5f * ao;
+        c = Mix(c, Rgb(0x7CE04A), Clamp01(rim));
+        return (c.r, c.g, c.b, a);
+    });
+
+    /// <summary>Pálpebra 3D: escamas em relevo, borda grossa arredondada e sombra projetada no olho.</summary>
+    static (float r, float g, float b, float a) Lid3D(float x, float y, float d, float top, float bot, float lidD, float a)
+    {
+        float mid = (top + bot) * 0.5f;
+        bool upper = y > mid;
+        if (a <= 0f)
+        {
+            // Sombra da pálpebra sobre o globo (logo abaixo da borda de cima / acima da de baixo).
+            if (d > 0f) return default;
+            float gap = lidD;   // > 0: descoberto
+            float sh = upper ? Clamp01(1f - gap / 0.10f) * 0.65f : Clamp01(1f - gap / 0.05f) * 0.35f;
+            return (0.02f, 0f, 0.04f, sh * Clamp01(-d / 0.02f));
+        }
+        float depth = -lidD;   // distância para dentro da pálpebra a partir da borda
+        // Borda: rolo arredondado (normal inclina para o olho).
+        float roll = Clamp01(1f - depth / 0.07f);
+        float ny = upper ? -roll : roll;
+        // Gosma: fibras pretas molhadas acompanhando a curva da pálpebra.
+        float Hs(float px, float py)
+        {
+            float k = 1f - MathF.Abs(2f * Fbm(px * 3.2f + 5f, py * 11f + Fbm(px * 2f, py * 2f) * 2.5f) - 1f);
+            return k * k;
+        }
+        float hh = Hs(x, y), gxs = (Hs(x + 0.01f, y) - hh) / 0.01f, gys = (Hs(x, y + 0.01f) - hh) / 0.01f;
+        float tilt = 1f - roll;
+        var n = System.Numerics.Vector3.Normalize(new System.Numerics.Vector3(-gxs * 0.05f * tilt, ny * 1.2f - gys * 0.05f * tilt, 0.9f));
+        var light = System.Numerics.Vector3.Normalize(new System.Numerics.Vector3(-0.45f, 0.65f, 0.62f));
+        float diff = Math.Max(0f, System.Numerics.Vector3.Dot(n, light));
+        var col = Mix(Rgb(0x05030A), Rgb(0x1A0C28), hh);
+        float lit = 0.5f + 0.8f * diff;
+        col = (col.r * lit, col.g * lit, col.b * lit);
+        var hv = System.Numerics.Vector3.Normalize(light + new System.Numerics.Vector3(0, 0, 1));
+        float spec = MathF.Pow(Math.Max(0f, System.Numerics.Vector3.Dot(n, hv)), 60f) * 1.4f + MathF.Pow(Math.Max(0f, System.Numerics.Vector3.Dot(n, hv)), 10f) * 0.12f;
+        col = Mix(col, Rgb(0xEDE4FF), Clamp01(spec));
+        col = Mix(col, Rgb(0x8A40D0), Clamp01(MathF.Pow(1f - n.Z, 2f) * 0.8f));
+        // Linha d'água verde acesa na borda.
+        col = Mix(col, Rgb(0x9CFF5A), Clamp01(1f - depth / 0.018f) * 0.85f);
+        // Fundo das pálpebras escurecendo no canto da órbita.
+        col = Mix(col, Rgb(0x0A0012), Clamp01(1f + d / 0.05f) * 0.6f);
+        return (col.r, col.g, col.b, a);
+    }
+
+    /// <summary>Olhinho 3D da escuridão: globo verde com fenda, envolto em gosma preta brilhante, e um halo.</summary>
+    static float[] MiniEye3D() => Paint(64, (x, y) =>
+    {
+        float d = Eye(x, y * 1.4f) / 1.4f;
+        float glow = Clamp01(1f - Len(x, y * 2f) / 1.0f);
+        if (d > 0f)
+            return glow <= 0f ? default : (0.45f, 0.95f, 0.30f, glow * glow * 0.45f);
+        var light = System.Numerics.Vector3.Normalize(new System.Numerics.Vector3(-0.45f, 0.65f, 0.62f));
+        const float R = 0.95f;
+        var n = System.Numerics.Vector3.Normalize(new System.Numerics.Vector3(x, y, MathF.Sqrt(Math.Max(0.02f, R * R - x * x - y * y))));
+        float rr = Len(x, y) / 0.50f;
+        (float r, float g, float b) c;
+        if (rr < 1f)
+        {
+            float rays = 0.5f + 0.5f * MathF.Sin(MathF.Atan2(y, x) * 14f + rr * 6f);
+            c = Mix(Rgb(0x146A08), Rgb(0x7CF030), Clamp01(1f - rr) * 0.6f + rays * 0.3f);
+            c = Mix(c, Rgb(0xE0FF90), Clamp01(1f - rr / 0.3f) * 0.5f);
+            c = Mix(c, Rgb(0x0A2A04), Clamp01((rr - 0.8f) / 0.2f));
+            c = Mix(c, Rgb(0x020004), Clamp01((0.05f - MathF.Abs(x)) / 0.02f) * Clamp01((0.95f - rr) / 0.1f));   // fenda
+        }
+        else c = Mix(Rgb(0x10041A), Rgb(0x3A1458), 0.5f);
+        // Gosma preta fechando as bordas do olhinho (pálpebras líquidas).
+        float lid = Clamp01(1f + d / 0.05f);
+        var ln = System.Numerics.Vector3.Normalize(new System.Numerics.Vector3(x * 0.3f, (y > 0 ? -1f : 1f) * lid * 1.2f, 0.8f));
+        float lspec = MathF.Pow(Math.Max(0f, System.Numerics.Vector3.Dot(ln, System.Numerics.Vector3.Normalize(light + new System.Numerics.Vector3(0, 0, 1)))), 25f);
+        c = Mix(c, (0.03f + lspec * 0.9f, 0.02f + lspec * 0.9f, 0.05f + lspec), Clamp01(lid * 1.4f));
+        float lit = 0.5f + 0.6f * Math.Max(0f, System.Numerics.Vector3.Dot(n, light));
+        c = (c.r * lit, c.g * lit, c.b * lit);
+        float spec = MathF.Pow(Math.Max(0f, System.Numerics.Vector3.Dot(n, System.Numerics.Vector3.Normalize(light + new System.Numerics.Vector3(0, 0, 1)))), 220f) * (1f - lid);
+        c = Mix(c, (0.9f, 1f, 0.85f), Clamp01(spec * 1.5f));
+        c = (c.r * 1.0f, c.g * 1.25f, c.b * 0.9f);
+        return (c.r, c.g, c.b, Cover(d * 0.6f, 64));
     });
 
     /// <summary>Olhinho amendoado verde (para a escuridão da Lendária).</summary>

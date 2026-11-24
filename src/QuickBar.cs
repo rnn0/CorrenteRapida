@@ -76,10 +76,20 @@ internal sealed class BarLogic
         public float FlashUntil;
         public Image? ProgressImg;
         public Spr[] Last = null!;          // últimos valores aplicados (só mexe no que mudou)
+        public GameObject? Holder, ProgressGo;
         public float NextDraw, LastDim = -1f;
     }
 
-    const int PoolSize = 112;
+    const int PoolSize = 200;   // Caos e Sangue Lendários chegam a ~145 camadas (+ abate)
+
+    // ───────── Abates: o alvo voa até a joia ativa ─────────
+    readonly KillWatcher _killWatch = new();
+    sealed class KillFx { public Vector2 From; public int Slot; public float T0; public bool Absorbed; public bool Blast; }
+    readonly List<KillFx> _fx = new();
+    const int FxPool = 220;
+    RawImage[]? _fxImgs; RectTransform[]? _fxRts;
+    readonly List<Spr> _fxBuf = new();
+    readonly float[] _absorbAt = { -99f, -99f, -99f, -99f, -99f, -99f };
     const float FlashTime = 1.2f;
 
     readonly Usage _usage = new();
@@ -88,18 +98,32 @@ internal sealed class BarLogic
 
     // As texturas são calculadas em segundo plano (leva 1–3 s) para não travar o jogo.
     static volatile GemStyle[]? _styles;
-    static BarLogic()
+    static volatile AtlasData[]? _atlases, _pendingAtlases;
+    static volatile GemStyle[]? _pending;     // estilos novos gerados depois de trocar a aparência no jogo
+    static volatile bool _building;
+    static BarLogic() => StartBuild(false);
+
+    /// <summary>Gera as artes em segundo plano com o estilo/cor atuais do config.</summary>
+    static void StartBuild(bool replace)
     {
-        System.Threading.Tasks.Task.Run(() =>
+        _building = true;
+        // Fio próprio com prioridade baixa: gerar as joias leva alguns segundos de CPU e não deve
+        // disputar com o jogo.
+        var th = new System.Threading.Thread(() =>
         {
             try
             {
+                GemArt.LuzColor = Plugin.S.LuzColor.Value.Trim();
+                GemStyle.LuzKillMode = Array.IndexOf(new[] { "fios", "feixe", "cometas", "penas", "runas", "aureola", "morcegos", "constelacao" }, Plugin.S.LuzKill.Value.Trim().ToLowerInvariant()) is int m && m >= 0 ? m : 4;
                 var a = new GemStyle[N];
-                for (int i = 0; i < N; i++) a[i] = GemArt.Build(i);
-                _styles = a;
+                var at = new AtlasData[N];
+                for (int i = 0; i < N; i++) { a[i] = GemArt.Build(i); at[i] = BuildAtlasData(a[i]); }
+                if (replace) { _pendingAtlases = at; _pending = a; } else { _atlases = at; _styles = a; }
             }
             catch (Exception e) { Plugin.L.LogWarning($"[CorrenteRapida] Falha ao gerar ícones: {e}"); }
-        });
+            finally { _building = false; }
+        }) { IsBackground = true, Priority = System.Threading.ThreadPriority.Lowest, Name = "CorrenteRapida-Joias" };
+        th.Start();
     }
 
     enum St { Idle, Opening, Clicking, Settle, Closing }
@@ -169,6 +193,7 @@ internal sealed class BarLogic
         RunSwitch(now);
         if (_state == St.Idle && _warmStage == 0) Harvest(now);
         UpdateBar(now);
+        if (Plugin.S.KillFx.Value && _bar != null && _bar.gameObject.activeInHierarchy) UpdateKills(now);
         TrackUsage(now);
     }
 
@@ -881,7 +906,9 @@ internal sealed class BarLogic
     {
         var g = new GemIcon { Style = style };
         // Todas as texturas da joia num atlas só: a placa de vídeo desenha as camadas em lote.
-        g.Atlas = MakeAtlas(style, out g.Uv, out g.Px);
+        var ad = _atlases?[i] ?? BuildAtlasData(style);
+        g.Atlas = UploadAtlas(ad);
+        g.Uv = ad.Uv; g.Px = ad.Px;
         g.Pool = new RawImage[PoolSize];
         g.Rts = new RectTransform[PoolSize];
         g.CurTex = new int[PoolSize];
@@ -901,6 +928,7 @@ internal sealed class BarLogic
         pimg.fillClockwise = true;
         pimg.raycastTarget = false;
         g.ProgressImg = pimg;
+        g.ProgressGo = pgo;
 
         // As camadas ficam num Canvas próprio: quando a arte anima, só esse pedaço é refeito,
         // não a interface inteira.
@@ -910,6 +938,7 @@ internal sealed class BarLogic
         hrt.pivot = new Vector2(0.5f, 0.5f);
         hrt.sizeDelta = Vector2.zero;
         holder.AddComponent<Canvas>();
+        g.Holder = holder;
         for (int k = 0; k < PoolSize; k++)
         {
             var go = NewRect("Camada" + k, holder.transform);
@@ -935,9 +964,21 @@ internal sealed class BarLogic
     /// <summary>
     /// Empacota as texturas de uma joia num atlas (prateleiras, com margem para os mipmaps não vazarem).
     /// </summary>
-    static Texture2D MakeAtlas(GemStyle style, out Rect[] uv, out Rect[] pxRect)
+    /// <summary>Atlas pronto para subir para a placa de vídeo (montado em segundo plano, com os mipmaps).</summary>
+    internal sealed class AtlasData
     {
-        const int pad = 8, width = 2048;
+        public int W, H, Mips;
+        public byte[] Bytes = null!;
+        public Rect[] Uv = null!, Px = null!;
+    }
+
+    /// <summary>
+    /// Empacota as texturas de uma joia num atlas (prateleiras, com margem para os mipmaps não vazarem)
+    /// e já calcula os mipmaps. Roda fora do fio principal.
+    /// </summary>
+    internal static AtlasData BuildAtlasData(GemStyle style)
+    {
+        const int pad = 8, width = 2048, mips = 6;
         int n = style.Tex.Count;
         var order = new int[n];
         for (int i = 0; i < n; i++) order[i] = i;
@@ -952,10 +993,12 @@ internal sealed class BarLogic
             cx += sz + pad;
             shelf = Math.Max(shelf, sz);
         }
-        int h = (cy + shelf + pad + 7) / 8 * 8;
-        var cols = new Color32[width * h];
+        int h = (cy + shelf + pad + 31) / 32 * 32;
+        var d = new AtlasData { W = width, H = h, Mips = mips, Uv = new Rect[n], Px = new Rect[n] };
+        int total = 0;
+        for (int m = 0; m < mips; m++) total += Math.Max(1, width >> m) * Math.Max(1, h >> m) * 4;
+        var bytes = new byte[total];
         static byte B(float v) => (byte)Math.Clamp((int)(v * 255f + 0.5f), 0, 255);
-        uv = new Rect[n]; pxRect = new Rect[n];
         for (int i = 0; i < n; i++)
         {
             int sz = style.Size[i]; var px = style.Tex[i];
@@ -963,18 +1006,47 @@ internal sealed class BarLogic
             for (int y = 0; y < sz; y++)
                 for (int x = 0; x < sz; x++)
                 {
-                    int s0 = (y * sz + x) * 4;
-                    cols[(oy + y) * width + ox + x] = new Color32(B(px[s0]), B(px[s0 + 1]), B(px[s0 + 2]), B(px[s0 + 3]));
+                    int s0 = (y * sz + x) * 4, o = ((oy + y) * width + ox + x) * 4;
+                    bytes[o] = B(px[s0]); bytes[o + 1] = B(px[s0 + 1]); bytes[o + 2] = B(px[s0 + 2]); bytes[o + 3] = B(px[s0 + 3]);
                 }
-            uv[i] = new Rect(ox / (float)width, oy / (float)h, sz / (float)width, sz / (float)h);
-            pxRect[i] = new Rect(ox, oy, sz, sz);
+            d.Uv[i] = new Rect(ox / (float)width, oy / (float)h, sz / (float)width, sz / (float)h);
+            d.Px[i] = new Rect(ox, oy, sz, sz);
         }
-        var tex = new Texture2D(width, h, TextureFormat.RGBA32, 4, false);
+        // Mipmaps (média 2x2, cor pré-multiplicada pelo alfa para as bordas não escurecerem).
+        int src = 0, sw = width, sh = h, dst = width * h * 4;
+        for (int m = 1; m < mips; m++)
+        {
+            int w2 = Math.Max(1, sw >> 1), h2 = Math.Max(1, sh >> 1);
+            for (int y = 0; y < h2; y++)
+                for (int x = 0; x < w2; x++)
+                {
+                    float r = 0, g = 0, b = 0, a = 0;
+                    for (int dy = 0; dy < 2; dy++)
+                        for (int dx = 0; dx < 2; dx++)
+                        {
+                            int sx = Math.Min(sw - 1, x * 2 + dx), sy2 = Math.Min(sh - 1, y * 2 + dy);
+                            int o = src + (sy2 * sw + sx) * 4; float al = bytes[o + 3];
+                            r += bytes[o] * al; g += bytes[o + 1] * al; b += bytes[o + 2] * al; a += al;
+                        }
+                    int q = dst + (y * w2 + x) * 4;
+                    if (a > 0f) { bytes[q] = (byte)(r / a); bytes[q + 1] = (byte)(g / a); bytes[q + 2] = (byte)(b / a); }
+                    bytes[q + 3] = (byte)(a / 4f);
+                }
+            src = dst; dst += w2 * h2 * 4; sw = w2; sh = h2;
+        }
+        d.Bytes = bytes;
+        return d;
+    }
+
+    /// <summary>Sobe o atlas já pronto (rápido: sem recalcular mipmaps no fio principal).</summary>
+    static Texture2D UploadAtlas(AtlasData d)
+    {
+        var tex = new Texture2D(d.W, d.H, TextureFormat.RGBA32, d.Mips, false);
         tex.filterMode = FilterMode.Trilinear;
         tex.wrapMode = TextureWrapMode.Clamp;
         tex.hideFlags = HideFlags.HideAndDontSave;
-        tex.SetPixels32(cols);
-        tex.Apply(true, true);
+        tex.LoadRawTextureData(d.Bytes);
+        tex.Apply(false, true);
         return tex;
     }
 
@@ -1037,12 +1109,12 @@ internal sealed class BarLogic
         g.WasActive = target > 0f;
 
         // Parada e encaixada: nada se mexe, não precisa redesenhar.
-        if (e <= 0f && g.Settled && st == g.LastStatus && flash <= 0f) return;
+        if (e <= 0f && g.Settled && st == g.LastStatus && flash <= 0f && now - _absorbAt[idx] >= GemStyle.KillAbsorbDur) return;
         g.Settled = e <= 0f && level < GemStyle.Radiante && flash <= 0f && !g.Style.AlwaysAnimate; // Radiante+ e cristais com brilho se mexem sempre
         g.LastStatus = st;
 
         // Limite de quadros: a joia ativa (ou em transição) anima a ~40 fps, as encaixadas a ~15 fps.
-        bool busy = e > 0f || flash > 0f || preview || g.T != target;
+        bool busy = e > 0f || flash > 0f || preview || g.T != target || now - _absorbAt[idx] < GemStyle.KillAbsorbDur;
         float fps = busy ? Plugin.S.ActiveFps.Value : Plugin.S.IdleFps.Value;
         if (fps > 0f)
         {
@@ -1050,6 +1122,7 @@ internal sealed class BarLogic
             g.NextDraw = now + 1f / fps;
         }
 
+        g.Style.KillAge = now - _absorbAt[idx];
         g.Style.Frame(e, now, level, flash, g.Buf);
         float inner = Plugin.S.ButtonSize.Value - 4f;
         float dim = st == Status.Locked ? 0.35f : 1f;
@@ -1235,7 +1308,10 @@ internal sealed class BarLogic
 
         PositionBar();
         ShowUpdateNotice(now);
+        UpdateMenu();
+        if (_pending != null) SwapStyles();
         int previewIdx = HoverPreview();
+        bool builtThisFrame = false;      // monta no máximo uma joia por quadro (evita engasgo)
 
         for (int i = 0; i < N; i++)
         {
@@ -1251,7 +1327,7 @@ internal sealed class BarLogic
             }
 
             if (!_laidOutWithStyles && _styles != null) LayoutSlots();
-            if (s.Gem == null && _styles != null) BuildGem(s, i, _styles[i]);
+            if (s.Gem == null && _styles != null && !builtThisFrame) { BuildGem(s, i, _styles[i]); builtThisFrame = true; }
             if (s.Gem != null)
             {
                 bool prev = i == previewIdx;
@@ -1281,6 +1357,236 @@ internal sealed class BarLogic
             s.Art.color = new Color(dim, dim, dim, 1f);
             s.Label.color = st == Status.Locked ? new Color(0.5f, 0.5f, 0.5f, 1f) : Color.white;
         }
+    }
+
+    void UpdateKills(float now)
+    {
+        _killWatch.Update();
+        var canvasRt = _canvasGo?.GetComponent<RectTransform>();
+        if (canvasRt == null) { _killWatch.Kills.Clear(); return; }
+        while (_killWatch.Kills.Count > 0)
+        {
+            var (wp, vblood) = _killWatch.Kills.Dequeue();
+            int slot = -1;
+            for (int i = 0; i < N; i++) if (_cards[i]?.Status == Status.Active && _slots[i].Gem != null) { slot = i; break; }
+            if (slot < 0 || _fx.Count >= (vblood ? 12 : 4)) continue;
+            Vector2 screen = new(Screen.width * 0.5f, Screen.height * 0.5f);
+            var cam = Camera.main;
+            if (cam != null)
+            {
+                var sp = cam.WorldToScreenPoint(wp);
+                if (sp.z < 0f) { sp.x = Screen.width - sp.x; sp.y = 0f; }
+                screen = new Vector2(Mathf.Clamp(sp.x, 0f, Screen.width), Mathf.Clamp(sp.y, 0f, Screen.height));
+            }
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRt, screen, null, out var local);
+            if (!vblood) { _fx.Add(new KillFx { From = local, Slot = slot, T0 = now }); continue; }
+            // V Blood: três levas de energia (de pontos um pouco diferentes do corpo) e uma explosão na joia
+            // quando a última chega.
+            var st = _slots[slot].Gem!.Style;
+            float u0 = Plugin.S.ButtonSize.Value;
+            for (int w = 0; w < 3; w++)
+                _fx.Add(new KillFx { From = local + new Vector2((w - 1) * u0 * 0.9f, (w == 1 ? 0.5f : -0.2f) * u0), Slot = slot, T0 = now + w * 0.28f });
+            _fx.Add(new KillFx { Slot = slot, T0 = now + 2 * 0.28f + st.KillArriveT, Blast = true });
+        }
+        if (_fx.Count == 0 && _fxImgs == null) return;
+        if (_fxImgs == null)
+        {
+            var root = NewRect("Abates", _canvasGo!.transform);
+            var rrt = root.GetComponent<RectTransform>();
+            rrt.anchorMin = rrt.anchorMax = new Vector2(0.5f, 0.5f);
+            rrt.pivot = new Vector2(0.5f, 0.5f);
+            rrt.sizeDelta = Vector2.zero;
+            root.AddComponent<Canvas>();
+            _fxImgs = new RawImage[FxPool]; _fxRts = new RectTransform[FxPool];
+            for (int k = 0; k < FxPool; k++)
+            {
+                var go = NewRect("Gota" + k, root.transform);
+                var rt = go.GetComponent<RectTransform>();
+                rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+                rt.pivot = new Vector2(0.5f, 0.5f);
+                var img = go.AddComponent<RawImage>();
+                img.raycastTarget = false; img.enabled = false;
+                _fxImgs[k] = img; _fxRts[k] = rt;
+            }
+        }
+        float unit = Plugin.S.ButtonSize.Value - 4f;
+        int used = 0;
+        for (int f = _fx.Count - 1; f >= 0; f--)
+        {
+            var fx = _fx[f];
+            var gem = _slots[fx.Slot].Gem;
+            if (gem == null) { _fx.RemoveAt(f); continue; }
+            var style = gem.Style;
+            float p = now - fx.T0;
+            if (p < 0f) continue;
+            if (fx.Blast)
+            {
+                if (p > GemStyle.VBloodBlastDur) { _fx.RemoveAt(f); continue; }
+                if (!fx.Absorbed) { fx.Absorbed = true; _absorbAt[fx.Slot] = now; gem.Settled = false; }
+                var brt = _slots[fx.Slot].Go.GetComponent<RectTransform>();
+                RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRt, RectTransformUtility.WorldToScreenPoint(null, brt.position), null, out var bto);
+                _fxBuf.Clear();
+                style.VBloodBlast(p, now, bto.x, bto.y, unit, _fxBuf);
+                foreach (var sp in _fxBuf)
+                {
+                    if (used >= FxPool || sp.A < 0.01f || sp.Tex < 0) continue;
+                    var img = _fxImgs[used]; var rt = _fxRts![used]; used++;
+                    if (img.texture != gem.Atlas) img.texture = gem.Atlas;
+                    img.uvRect = gem.Uv[sp.Tex];
+                    rt.anchoredPosition = new Vector2(sp.X, sp.Y);
+                    rt.sizeDelta = new Vector2(sp.W, sp.H);
+                    rt.localRotation = Quaternion.Euler(0f, 0f, sp.Rot);
+                    img.color = new Color(1f, 1f, 1f, sp.A);
+                    if (!img.enabled) img.enabled = true;
+                }
+                continue;
+            }
+            if (!fx.Absorbed && p >= style.KillArriveT) { fx.Absorbed = true; _absorbAt[fx.Slot] = now; gem.Settled = false; }
+            if (p > style.KillDur + 0.1f) { _fx.RemoveAt(f); continue; }
+            var srt = _slots[fx.Slot].Go.GetComponent<RectTransform>();
+            var sScreen = RectTransformUtility.WorldToScreenPoint(null, srt.position);
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRt, sScreen, null, out var to);
+            _fxBuf.Clear();
+            style.KillTravel(p, now, fx.From.x, fx.From.y, to.x, to.y, unit, _fxBuf);
+            foreach (var sp in _fxBuf)
+            {
+                if (used >= FxPool || sp.A < 0.01f || sp.Tex < 0) continue;
+                var img = _fxImgs[used]; var rt = _fxRts![used]; used++;
+                if (img.texture != gem.Atlas) img.texture = gem.Atlas;
+                img.uvRect = gem.Uv[sp.Tex];
+                rt.anchoredPosition = new Vector2(sp.X, sp.Y);
+                rt.sizeDelta = new Vector2(sp.W, sp.H);
+                rt.localRotation = Quaternion.Euler(0f, 0f, sp.Rot);
+                img.color = new Color(1f, 1f, 1f, sp.A);
+                if (!img.enabled) img.enabled = true;
+            }
+        }
+        for (int k = used; k < FxPool; k++) if (_fxImgs[k].enabled) _fxImgs[k].enabled = false;
+    }
+
+    // ───────── Menu de aparência (engrenagem ao lado da barra) ─────────
+    RectTransform? _gear, _menu;
+    TextMeshProUGUI? _optColor, _optStatus;
+    static readonly string[] LuzColors = { "Diamante", "TopazioDourado", "Citrino", "Champanhe", "SafiraClara" };
+    static readonly string[] LuzColorNames = { "Diamante", "Topázio dourado", "Citrino", "Champanhe", "Safira clara" };
+
+    void UpdateMenu()
+    {
+        if (_bar == null) return;
+        if (_gear == null)
+        {
+            var gg = NewRect("Aparencia", _bar);
+            _gear = gg.GetComponent<RectTransform>();
+            _gear.anchorMin = _gear.anchorMax = new Vector2(0f, 0.5f);
+            _gear.pivot = new Vector2(0.5f, 0.5f);
+            _gear.sizeDelta = new Vector2(20f, 20f);
+            var raw = gg.AddComponent<RawImage>();
+            raw.texture = GearTexture();
+            var b = gg.AddComponent<Button>();
+            b.targetGraphic = raw;
+            b.onClick.AddListener(DelegateSupport.ConvertDelegate<UnityAction>(new Action(() => { if (_menu != null) _menu.gameObject.SetActive(!_menu.gameObject.activeSelf); })));
+
+            var mg = NewRect("MenuAparencia", _bar);
+            _menu = mg.GetComponent<RectTransform>();
+            _menu.anchorMin = _menu.anchorMax = new Vector2(0f, 0.5f);
+            _menu.pivot = new Vector2(1f, 0f);
+            _menu.sizeDelta = new Vector2(220f, 64f);
+            var bg = mg.AddComponent<Image>();
+            bg.color = new Color(0.06f, 0.04f, 0.06f, 0.92f);
+            _optColor = MenuButton(_menu, 0, () =>
+            {
+                int k = Array.IndexOf(LuzColors, Plugin.S.LuzColor.Value);
+                Plugin.S.LuzColor.Value = LuzColors[(k + 1) % LuzColors.Length];
+                Rebuild();
+            });
+            _optStatus = MenuButton(_menu, 1, () => { });
+            mg.SetActive(false);
+        }
+        float size = Plugin.S.ButtonSize.Value, gap = Gap;
+        float right = N * size + (N - 1) * gap;
+        _gear.anchoredPosition = new Vector2(right + 18f, 0f);
+        _menu!.anchoredPosition = new Vector2(right + 28f, size * 0.5f + 6f);
+        if (!_menu.gameObject.activeSelf) return;
+        foreach (var t in new[] { _optColor, _optStatus })
+            if (t != null && _font != null && t.font != _font) { t.font = _font; t.fontSharedMaterial = _font.material; }
+        int ci = Math.Max(0, Array.IndexOf(LuzColors, Plugin.S.LuzColor.Value));
+        _optColor!.text = "Cor da Luz: <b>" + LuzColorNames[ci] + "</b>";
+        _optStatus!.text = _building ? "<size=85%>Gerando as joias…</size>" : "<size=80%>clique para trocar</size>";
+    }
+
+    TextMeshProUGUI MenuButton(RectTransform parent, int row, Action onClick)
+    {
+        var go = NewRect("Opcao" + row, parent);
+        var rt = go.GetComponent<RectTransform>();
+        rt.anchorMin = new Vector2(0f, 1f); rt.anchorMax = new Vector2(1f, 1f);
+        rt.pivot = new Vector2(0.5f, 1f);
+        rt.sizeDelta = new Vector2(-12f, 26f);
+        rt.anchoredPosition = new Vector2(0f, -6f - row * 28f);
+        var img = go.AddComponent<Image>();
+        img.color = row < 1 ? new Color(1f, 1f, 1f, 0.06f) : new Color(0f, 0f, 0f, 0f);
+        var t = NewRect("Texto", go.transform);
+        Stretch(t, 4f);
+        var tmp = t.AddComponent<TextMeshProUGUI>();
+        tmp.fontSize = 14; tmp.color = new Color(1f, 0.92f, 0.78f, 1f);
+        tmp.alignment = TextAlignmentOptions.Left;
+        tmp.enableWordWrapping = false;
+        tmp.raycastTarget = false;
+        if (row < 1)
+        {
+            var b = go.AddComponent<Button>();
+            b.targetGraphic = img;
+            b.onClick.AddListener(DelegateSupport.ConvertDelegate<UnityAction>(new Action(() => { if (!_building) onClick(); })));
+        }
+        return tmp;
+    }
+
+    void Rebuild()
+    {
+        if (_building) return;
+        Plugin.L.LogInfo($"[CorrenteRapida] Gerando joias: cor da Luz {Plugin.S.LuzColor.Value}.");
+        StartBuild(true);
+    }
+
+    /// <summary>Troca as joias pelas recém-geradas (no fio principal).</summary>
+    void SwapStyles()
+    {
+        var a = _pending; _pending = null;
+        if (a == null) return;
+        _fx.Clear();
+        if (_fxImgs != null) foreach (var im in _fxImgs) { im.enabled = false; im.texture = null; }
+        for (int i = 0; i < N; i++)
+        {
+            var g = _slots[i]?.Gem;
+            if (g == null) continue;
+            if (g.Holder != null) UObject.Destroy(g.Holder);
+            if (g.ProgressGo != null) UObject.Destroy(g.ProgressGo);
+            if (g.Atlas != null) UObject.Destroy(g.Atlas);
+            _slots[i].Gem = null;
+        }
+        _atlases = _pendingAtlases;
+        _styles = a;
+        _laidOutWithStyles = false;
+    }
+
+    static Texture2D? _gearTex;
+    static Texture2D GearTexture()
+    {
+        if (_gearTex != null) return _gearTex;
+        const int n = 64;
+        var t = new Texture2D(n, n, TextureFormat.RGBA32, false);
+        var c = new Color32[n * n];
+        for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                float u = (x + 0.5f) / n * 2f - 1f, v = (y + 0.5f) / n * 2f - 1f;
+                float r = MathF.Sqrt(u * u + v * v), a = MathF.Atan2(v, u);
+                float teeth = MathF.Abs(MathF.Cos(a * 4f)) > 0.6f ? 0.92f : 0.72f;
+                float on = r < teeth && r > 0.32f ? 1f : 0f;
+                float edge = Math.Clamp((teeth - r) * n * 0.5f, 0f, 1f) * Math.Clamp((r - 0.32f) * n * 0.5f, 0f, 1f);
+                c[y * n + x] = new Color32(235, 215, 180, (byte)(255 * edge * on + 255 * edge * (1 - on) * 0));
+            }
+        t.SetPixels32(c); t.Apply(); t.hideFlags = HideFlags.HideAndDontSave;
+        return _gearTex = t;
     }
 
     void PositionBar()

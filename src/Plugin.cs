@@ -10,7 +10,7 @@ public class Plugin : BasePlugin
 {
     public const string Guid = "sangria.correnterapida";
     public const string Name = "CorrenteRapida";
-    public const string Version = "2.5.2";
+    public const string Version = "2.6.0";
 
     internal static ManualLogSource L = null!;
     internal static Settings S = null!;
@@ -45,6 +45,9 @@ internal sealed class Settings
     public readonly ConfigEntry<float> ButtonSize;
     public readonly ConfigEntry<float> Spacing;
     public readonly ConfigEntry<bool> AutoSpacing;
+    public readonly ConfigEntry<string> LuzColor;
+    public readonly ConfigEntry<bool> KillFx;
+    public readonly ConfigEntry<string> LuzKill;
     public readonly ConfigEntry<float> ActiveFps, IdleFps;
     public readonly ConfigEntry<bool> UseCardArt;
     public readonly ConfigEntry<bool> HidePanelDuringSwitch;
@@ -72,6 +75,9 @@ internal sealed class Settings
         Spacing = f.Bind("Posicao", "Espacamento", 14f, "Espaço mínimo entre os botões.");
         ActiveFps = f.Bind("Desempenho", "QuadrosJoiaAtiva", 40f, "Quadros por segundo da animação da joia ativa (0 = sem limite).");
         IdleFps = f.Bind("Desempenho", "QuadrosJoiasEncaixadas", 15f, "Quadros por segundo das joias encaixadas (0 = sem limite).");
+        LuzColor = f.Bind("Visual", "CorLuz", "Diamante", new ConfigDescription("Cor do sol da Corrente Luminosa.", new AcceptableValueList<string>("Diamante", "TopazioDourado", "Citrino", "Champanhe", "SafiraClara")));
+        LuzKill = f.Bind("Visual", "AbateLuz", "Runas", new ConfigDescription("Animação de abate da Corrente Luminosa (Runas = runas sagradas e vampíricas + chama sagrada).", new AcceptableValueList<string>("Fios", "Feixe", "Cometas", "Penas", "Runas", "Aureola", "Morcegos", "Constelacao")));
+        KillFx = f.Bind("Visual", "AnimacaoAbate", true, "Quando você abate um inimigo que acertou, o sangue/energia dele voa até a joia ativa e é absorvido.");
         AutoSpacing = f.Bind("Posicao", "EspacoAutomatico", true, "Aumenta o espaço entre os botões o suficiente para a aura de uma joia não ficar em cima da vizinha.");
         UseCardArt = f.Bind("Visual", "UsarArteDasCartas", true, "Usa um recorte da arte de cada Corrente como ícone (depois que a janela for aberta uma vez).");
         HidePanelDuringSwitch = f.Bind("Visual", "EsconderJanelaNaTroca", true, "Deixa a janela invisível enquanto o mod troca a Corrente.");
@@ -111,6 +117,13 @@ internal sealed class Settings
         {
             if (UpdateMode.Value == "Avisar") UpdateMode.Value = "Automatico";
             cfgVersion.Value = 4;
+            f.Save();
+        }
+        // 2.6.0: só existe o estilo 3D; o abate padrão da Luz passa a ser as Runas com chama sagrada.
+        if (cfgVersion.Value < 5)
+        {
+            if (LuzKill.Value == "Fios") LuzKill.Value = "Runas";
+            cfgVersion.Value = 5;
             f.Save();
         }
         Preload = f.Bind("Geral", "PreCarregarJanela", true,

@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- Gera as texturas e quadros de animação fora do jogo (para as prévias do README). -->
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><Nullable>enable</Nullable><RootNamespace>CorrenteRapida</RootNamespace></PropertyGroup>
-  <ItemGroup><Compile Include="../../src/GemArt.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../src/GemArt.cs" /><Compile Include="../../src/Gem3D.cs" /></ItemGroup>
 </Project>
