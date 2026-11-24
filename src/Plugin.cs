@@ -10,7 +10,7 @@ public class Plugin : BasePlugin
 {
     public const string Guid = "sangria.correnterapida";
     public const string Name = "CorrenteRapida";
-    public const string Version = "2.6.0";
+    public const string Version = "2.6.1";
 
     internal static ManualLogSource L = null!;
     internal static Settings S = null!;

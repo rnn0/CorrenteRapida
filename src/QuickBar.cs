@@ -107,23 +107,47 @@ internal sealed class BarLogic
     static void StartBuild(bool replace)
     {
         _building = true;
-        // Fio próprio com prioridade baixa: gerar as joias leva alguns segundos de CPU e não deve
-        // disputar com o jogo.
-        var th = new System.Threading.Thread(() =>
+        GemArt.LuzColor = Plugin.S.LuzColor.Value.Trim();
+        GemStyle.LuzKillMode = Array.IndexOf(new[] { "fios", "feixe", "cometas", "penas", "runas", "aureola", "morcegos", "constelacao" }, Plugin.S.LuzKill.Value.Trim().ToLowerInvariant()) is int m && m >= 0 ? m : 4;
+        // Fios próprios com prioridade baixa: gerar as joias leva alguns segundos de CPU e não deve
+        // disputar com o jogo. Até 3 fios (metade dos núcleos), cada um pegando a próxima joia da fila;
+        // as mais pesadas primeiro.
+        var a = new GemStyle[N];
+        var at = new AtlasData[N];
+        int[] queue = { GemArt.Gelo, GemArt.Corrompida, GemArt.Tempestade, GemArt.Caos, GemArt.Luz, GemArt.Sangue };
+        int next = -1, left = Math.Clamp(Environment.ProcessorCount / 2, 1, 3), failed = 0;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        int workers = left;
+        for (int w = 0; w < workers; w++)
         {
-            try
+            new System.Threading.Thread(() =>
             {
-                GemArt.LuzColor = Plugin.S.LuzColor.Value.Trim();
-                GemStyle.LuzKillMode = Array.IndexOf(new[] { "fios", "feixe", "cometas", "penas", "runas", "aureola", "morcegos", "constelacao" }, Plugin.S.LuzKill.Value.Trim().ToLowerInvariant()) is int m && m >= 0 ? m : 4;
-                var a = new GemStyle[N];
-                var at = new AtlasData[N];
-                for (int i = 0; i < N; i++) { a[i] = GemArt.Build(i); at[i] = BuildAtlasData(a[i]); }
-                if (replace) { _pendingAtlases = at; _pending = a; } else { _atlases = at; _styles = a; }
-            }
-            catch (Exception e) { Plugin.L.LogWarning($"[CorrenteRapida] Falha ao gerar ícones: {e}"); }
-            finally { _building = false; }
-        }) { IsBackground = true, Priority = System.Threading.ThreadPriority.Lowest, Name = "CorrenteRapida-Joias" };
-        th.Start();
+                try
+                {
+                    int q;
+                    while ((q = System.Threading.Interlocked.Increment(ref next)) < N)
+                    {
+                        int i = queue[q];
+                        a[i] = GemArt.Build(i);
+                        at[i] = BuildAtlasData(a[i]);
+                        a[i].FreePixels();   // o atlas já tem tudo; as texturas em float ocupavam ~300 MB
+                    }
+                }
+                catch (Exception e) { System.Threading.Interlocked.Increment(ref failed); Plugin.L.LogWarning($"[CorrenteRapida] Falha ao gerar ícones: {e}"); }
+                finally
+                {
+                    if (System.Threading.Interlocked.Decrement(ref left) == 0)
+                    {
+                        if (failed == 0)
+                        {
+                            if (replace) { _pendingAtlases = at; _pending = a; } else { _atlases = at; _styles = a; }
+                            Plugin.L.LogInfo($"[CorrenteRapida] Joias geradas em {sw.ElapsedMilliseconds / 1000f:0.0} s ({workers} fios).");
+                        }
+                        _building = false;
+                    }
+                }
+            }) { IsBackground = true, Priority = System.Threading.ThreadPriority.Lowest, Name = "CorrenteRapida-Joias" + w }.Start();
+        }
     }
 
     enum St { Idle, Opening, Clicking, Settle, Closing }
@@ -193,7 +217,7 @@ internal sealed class BarLogic
         RunSwitch(now);
         if (_state == St.Idle && _warmStage == 0) Harvest(now);
         UpdateBar(now);
-        if (Plugin.S.KillFx.Value && _bar != null && _bar.gameObject.activeInHierarchy) UpdateKills(now);
+        if (Plugin.S.KillFx.Value && _bar != null && _bar.gameObject.activeInHierarchy && (_fx.Count > 0 || AnyActive())) UpdateKills(now);
         TrackUsage(now);
     }
 
@@ -906,8 +930,15 @@ internal sealed class BarLogic
     {
         var g = new GemIcon { Style = style };
         // Todas as texturas da joia num atlas só: a placa de vídeo desenha as camadas em lote.
-        var ad = _atlases?[i] ?? BuildAtlasData(style);
-        g.Atlas = UploadAtlas(ad);
+        var ad = _atlases![i];
+        // O atlas sobe para a placa de vídeo uma vez só; se a barra for recriada (troca de cena), reaproveita.
+        if (!Alive(_atlasTex[i]))
+        {
+            if (ad.Bytes == null) { if (!_building) StartBuild(true); return; }
+            _atlasTex[i] = UploadAtlas(ad);
+        }
+        ad.Bytes = null!;   // já está na placa de vídeo: libera a cópia na memória
+        g.Atlas = _atlasTex[i];
         g.Uv = ad.Uv; g.Px = ad.Px;
         g.Pool = new RawImage[PoolSize];
         g.Rts = new RectTransform[PoolSize];
@@ -965,6 +996,8 @@ internal sealed class BarLogic
     /// Empacota as texturas de uma joia num atlas (prateleiras, com margem para os mipmaps não vazarem).
     /// </summary>
     /// <summary>Atlas pronto para subir para a placa de vídeo (montado em segundo plano, com os mipmaps).</summary>
+    static readonly Texture2D?[] _atlasTex = new Texture2D?[N];
+
     internal sealed class AtlasData
     {
         public int W, H, Mips;
@@ -1128,6 +1161,7 @@ internal sealed class BarLogic
         float dim = st == Status.Locked ? 0.35f : 1f;
         if (dim != g.LastDim) { g.LastDim = dim; for (int q = 0; q < PoolSize; q++) g.Last[q].Tex = -1; }
         int k = 0, used = 0;
+        float eps = 0.25f / Math.Max(1f, inner);
         for (; k < g.Buf.Count && used < PoolSize; k++)
         {
             var sp = g.Buf[k];
@@ -1138,15 +1172,18 @@ internal sealed class BarLogic
             ref var last = ref g.Last[u];
             if (!g.On[u]) { img.enabled = true; g.On[u] = true; last.Tex = -1; }
             if (g.CurTex[u] != sp.Tex) { img.uvRect = g.Uv[sp.Tex]; g.CurTex[u] = sp.Tex; }
-            if (MathF.Abs(last.X - sp.X) > 0.002f || MathF.Abs(last.Y - sp.Y) > 0.002f || last.Tex < 0)
-                rt.anchoredPosition = new Vector2(sp.X * inner, sp.Y * inner);
-            if (MathF.Abs(last.W - sp.W) > 0.002f || MathF.Abs(last.H - sp.H) > 0.002f || last.Tex < 0)
-                rt.sizeDelta = new Vector2(sp.W * inner, sp.H * inner);
-            if (MathF.Abs(last.Rot - sp.Rot) > 0.2f || last.Tex < 0)
-                rt.localRotation = Quaternion.Euler(0f, 0f, sp.Rot);
-            if (MathF.Abs(last.A - sp.A) > 0.01f || last.Tex < 0)
-                img.color = new Color(dim, dim, dim, sp.A);
-            last = sp; last.Tex = sp.Tex;
+            // Só mexe no que mudou o suficiente para aparecer na tela (1/4 de pixel, 0,4°, 1% de opacidade):
+            // cada propriedade alterada obriga o Canvas a refazer a malha.
+            bool fresh = last.Tex < 0;
+            if (fresh || MathF.Abs(last.X - sp.X) > eps || MathF.Abs(last.Y - sp.Y) > eps)
+            { rt.anchoredPosition = new Vector2(sp.X * inner, sp.Y * inner); last.X = sp.X; last.Y = sp.Y; }
+            if (fresh || MathF.Abs(last.W - sp.W) > eps || MathF.Abs(last.H - sp.H) > eps)
+            { rt.sizeDelta = new Vector2(sp.W * inner, sp.H * inner); last.W = sp.W; last.H = sp.H; }
+            if (fresh || MathF.Abs(Mathf.DeltaAngle(last.Rot, sp.Rot)) > 0.4f)
+            { rt.localRotation = Quaternion.Euler(0f, 0f, sp.Rot); last.Rot = sp.Rot; }
+            if (fresh || MathF.Abs(last.A - sp.A) > 0.01f)
+            { img.color = new Color(dim, dim, dim, sp.A); last.A = sp.A; }
+            last.Tex = sp.Tex;
         }
         for (k = used; k < PoolSize; k++)
             if (g.On[k]) { g.Pool[k].enabled = false; g.On[k] = false; }
@@ -1359,6 +1396,12 @@ internal sealed class BarLogic
         }
     }
 
+    bool AnyActive()
+    {
+        for (int i = 0; i < N; i++) if (_cards[i]?.Status == Status.Active) return true;
+        return false;
+    }
+
     void UpdateKills(float now)
     {
         _killWatch.Update();
@@ -1556,11 +1599,12 @@ internal sealed class BarLogic
         if (_fxImgs != null) foreach (var im in _fxImgs) { im.enabled = false; im.texture = null; }
         for (int i = 0; i < N; i++)
         {
+            if (Alive(_atlasTex[i])) UObject.Destroy(_atlasTex[i]);
+            _atlasTex[i] = null;
             var g = _slots[i]?.Gem;
             if (g == null) continue;
             if (g.Holder != null) UObject.Destroy(g.Holder);
             if (g.ProgressGo != null) UObject.Destroy(g.ProgressGo);
-            if (g.Atlas != null) UObject.Destroy(g.Atlas);
             _slots[i].Gem = null;
         }
         _atlases = _pendingAtlases;

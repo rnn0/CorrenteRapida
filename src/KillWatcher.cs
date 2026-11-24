@@ -132,7 +132,7 @@ internal sealed class KillWatcher
         }
 
         if (now < _nextPoll) return;
-        _nextPoll = now + 0.1f;
+        _nextPoll = now + 0.15f;
         _stage = "posicao";
         if (!TryPos(em, _me, out var me3)) return;
 

@@ -24,6 +24,8 @@ internal sealed class GemStyle
     public GemStyle(int kind) { Kind = kind; }
 
     public int Add(int size, float[] px) { Tex.Add(px); Size.Add(size); return Tex.Count - 1; }
+    /// <summary>Solta as texturas em float depois que o atlas foi montado (os índices continuam valendo).</summary>
+    public void FreePixels() { for (int i = 0; i < Tex.Count; i++) Tex[i] = Array.Empty<float>(); }
 
     // Índices das texturas de aura (preenchidos por GemArt.Build).
     public int Halo = -1, A1 = -1, A2 = -1, A3 = -1, A4 = -1, Particle = -1;
