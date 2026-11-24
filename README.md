@@ -6,6 +6,13 @@ Mod de cliente (BepInEx) para o servidor **Sangria Falls** de V Rising. Adiciona
 
 <p align="center"><img src="docs/lendaria.gif" alt="As seis Correntes no nível Lendário"></p>
 
+## Novidades da 2.6.0
+
+- **Joias em 3D**: as seis Correntes foram refeitas do zero, com joias lapidadas, encaixes esculpidos na pedra e um efeito Lendário permanente em cada uma.
+- **Animação de abate**: o sangue ou a energia do inimigo que você abateu vai até a joia ativa, com uma animação diferente em cada elemento.
+- **V Blood**: o abate de um V Blood absorve três vezes mais e termina numa explosão na joia.
+- **Menu da engrenagem**: troca a cor do sol da Luminosa sem sair do jogo.
+
 ## Recursos
 
 - **Troca com um clique** (botão esquerdo ou direito). O mod aperta os próprios botões "USAR" do ScarletInterface: nenhuma mensagem é forjada e recarga/bloqueios continuam sendo controlados pelo servidor.
